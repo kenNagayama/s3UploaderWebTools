@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>S3 Uploader</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+      --card-bg: rgba(255, 255, 255, 0.05);
+      --card-border: rgba(255, 255, 255, 0.1);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --success: #10b981;
+      --error: #ef4444;
+      --input-bg: rgba(0, 0, 0, 0.2);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg-gradient);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 2rem;
+    }
+
+    .container {
+      background: var(--card-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--card-border);
+      border-radius: 24px;
+      padding: 3rem;
+      width: 100%;
+      max-width: 600px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      animation: fadeIn 0.8s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 800;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(to right, #818cf8, #c084fc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-align: center;
+    }
+
+    p.subtitle {
+      text-align: center;
+      color: var(--text-muted);
+      margin-bottom: 2rem;
+      font-size: 0.95rem;
+    }
+
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+
+    label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    input[type="text"], input[type="file"] {
+      width: 100%;
+      background: var(--input-bg);
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+      padding: 0.85rem 1rem;
+      border-radius: 12px;
+      font-size: 1rem;
+      transition: all 0.3s ease;
+      font-family: 'Inter', sans-serif;
+    }
+
+    /* ネイティブの選択ファイル数表示を隠す */
+    input[type="file"] {
+      color: transparent;
+    }
+
+    input[type="text"]:focus, input[type="file"]:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+    }
+
+    input[type="file"]::file-selector-button {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      margin-right: 1rem;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.3s ease;
+    }
+
+    input[type="file"]::file-selector-button:hover {
+      background: var(--primary-hover);
+    }
+
+    .credentials-status {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+      padding: 1rem;
+      border-radius: 12px;
+      margin-bottom: 1.5rem;
+      display: none;
+    }
+
+    .credentials-status.active {
+      display: flex;
+    }
+
+    .credentials-text {
+      color: var(--success);
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .btn-clear {
+      background: transparent;
+      border: 1px solid var(--error);
+      color: var(--error);
+      padding: 0.4rem 0.8rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-clear:hover {
+      background: var(--error);
+      color: white;
+    }
+
+    .file-list {
+      max-height: 150px;
+      overflow-y: auto;
+      background: var(--input-bg);
+      border-radius: 12px;
+      padding: 1rem;
+      margin-top: 0.5rem;
+      display: none;
+    }
+
+    .file-list.active {
+      display: block;
+    }
+
+    .file-item {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      padding: 0.25rem 0;
+      border-bottom: 1px solid var(--card-border);
+    }
+    .file-item:last-child {
+      border-bottom: none;
+    }
+
+    .btn-upload {
+      width: 100%;
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 1rem;
+      border-radius: 12px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      margin-top: 1rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn-upload:hover:not(:disabled) {
+      background: var(--primary-hover);
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px -10px var(--primary);
+    }
+
+    .btn-upload:disabled {
+      background: var(--card-border);
+      color: var(--text-muted);
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .progress-container {
+      margin-top: 1.5rem;
+      display: none;
+    }
+
+    .progress-container.active {
+      display: block;
+    }
+
+    .progress-info {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.85rem;
+      margin-bottom: 0.5rem;
+      color: var(--text-muted);
+    }
+
+    .progress-bar-bg {
+      width: 100%;
+      height: 8px;
+      background: var(--input-bg);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(to right, #818cf8, #c084fc);
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+
+    .log-area {
+      margin-top: 1.5rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      background: var(--input-bg);
+      padding: 1rem;
+      border-radius: 12px;
+      height: 100px;
+      overflow-y: auto;
+      font-family: monospace;
+      display: none;
+    }
+
+    .log-area.active {
+      display: block;
+    }
+
+    .log-entry {
+      margin-bottom: 0.25rem;
+    }
+    .log-entry.error { color: var(--error); }
+    .log-entry.success { color: var(--success); }
+
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h1>Twins デジタルデータ アップロードツール</h1>
+    <p class="subtitle">Secure, local-only bulk CSV uploader</p>
+
+    <!-- Credentials Section -->
+    <div class="form-group" id="envInputGroup">
+      <label for="envFile">設定ファイル(.env) を登録 (ブラウザに保存されます)</label>
+      <input type="file" id="envFile">
+      <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.5rem;">※Windowsで隠しファイル(.env)が見えない場合は、エクスプローラーの「表示」タブから「隠しファイル」にチェックを入れてください</p>
+    </div>
+
+    <div class="credentials-status" id="credentialsStatus">
+      <div class="credentials-text">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+        認証情報が読み込まれました
+      </div>
+      <button class="btn-clear" id="btnClearCredentials">Clear</button>
+    </div>
+
+    <!-- S3 Config Section -->
+    <div class="form-group">
+      <label for="bucketName">S3 バケット名</label>
+      <input type="text" id="bucketName" value="twins-digital-data-test" placeholder="e.g. twins-digital-data">
+    </div>
+
+    <div class="form-group">
+      <label for="prefix">アップロード先フォルダ</label>
+      <input type="text" id="prefix" value="tableau-access/oomiya/oomiya-mc/" placeholder="e.g. folder/path/">
+    </div>
+
+    <!-- File Selection Section -->
+    <div class="form-group">
+      <label for="folderInput">アップロード対象フォルダを選択 (デフォルト: digital-data)</label>
+      <input type="file" id="folderInput" webkitdirectory directory multiple>
+      <div class="file-list" id="fileList"></div>
+    </div>
+
+    <!-- Actions -->
+    <button class="btn-upload" id="btnUpload" disabled> 0 個のファイルをアップロード開始🚀 </button>
+
+    <!-- Progress -->
+    <div class="progress-container" id="progressContainer">
+      <div class="progress-info">
+        <span id="progressText">アップロード中...</span>
+        <span id="progressPercent">0%</span>
+      </div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="progressBar"></div>
+      </div>
+    </div>
+
+    <div class="log-area" id="logArea"></div>
+  </div>
+
+  <script type="module">
+    import { 
+      S3Client, 
+      PutObjectCommand, 
+      CreateMultipartUploadCommand, 
+      UploadPartCommand, 
+      CompleteMultipartUploadCommand 
+    } from 'https://cdn.skypack.dev/@aws-sdk/client-s3@3.350.0';
+
+    // DOM Elements
+    const envFile = document.getElementById('envFile');
+    const envInputGroup = document.getElementById('envInputGroup');
+    const credentialsStatus = document.getElementById('credentialsStatus');
+    const btnClearCredentials = document.getElementById('btnClearCredentials');
+    
+    const bucketName = document.getElementById('bucketName');
+    const prefix = document.getElementById('prefix');
+    const folderInput = document.getElementById('folderInput');
+    const fileList = document.getElementById('fileList');
+    const btnUpload = document.getElementById('btnUpload');
+    
+    const progressContainer = document.getElementById('progressContainer');
+    const progressBar = document.getElementById('progressBar');
+    const progressPercent = document.getElementById('progressPercent');
+    const progressText = document.getElementById('progressText');
+    const logArea = document.getElementById('logArea');
+
+    let awsConfig = null;
+    let selectedFiles = [];
+
+    // --- Logger ---
+    function log(message, type = 'info') {
+      logArea.classList.add('active');
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      logArea.appendChild(entry);
+      logArea.scrollTop = logArea.scrollHeight;
+    }
+
+    // --- Credentials Management ---
+    function checkLocalStorage() {
+      const stored = localStorage.getItem('s3_uploader_credentials');
+      if (stored) {
+        try {
+          awsConfig = JSON.parse(stored);
+          envInputGroup.style.display = 'none';
+          credentialsStatus.classList.add('active');
+          validateUploadState();
+        } catch(e) {
+          localStorage.removeItem('s3_uploader_credentials');
+        }
+      }
+    }
+
+    function parseEnvContent(content) {
+      const lines = content.split('\n');
+      const config = {};
+      lines.forEach(line => {
+        const match = line.match(/^\s*([^=]+?)\s*=\s*(.*?)\s*$/);
+        if (match) {
+          config[match[1]] = match[2];
+        }
+      });
+      return config;
+    }
+
+    envFile.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const content = event.target.result;
+        const config = parseEnvContent(content);
+        
+        if (config['AWS_ACCESS_KEY_ID'] && config['AWS_SECRET_ACCESS_KEY']) {
+          awsConfig = {
+            region: config['AWS_REGION'] || 'ap-northeast-1',
+            credentials: {
+              accessKeyId: config['AWS_ACCESS_KEY_ID'],
+              secretAccessKey: config['AWS_SECRET_ACCESS_KEY']
+            }
+          };
+          localStorage.setItem('s3_uploader_credentials', JSON.stringify(awsConfig));
+          
+          envInputGroup.style.display = 'none';
+          credentialsStatus.classList.add('active');
+          log('Credentials successfully loaded and saved manually.', 'success');
+          validateUploadState();
+        } else {
+          alert("Invalid .env file. Missing AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY");
+          envFile.value = '';
+        }
+      };
+      reader.readAsText(file);
+    });
+
+    btnClearCredentials.addEventListener('click', () => {
+      localStorage.removeItem('s3_uploader_credentials');
+      awsConfig = null;
+      credentialsStatus.classList.remove('active');
+      envInputGroup.style.display = 'block';
+      envFile.value = '';
+      validateUploadState();
+      log('Credentials cleared.');
+    });
+
+    // --- File Selection ---
+    folderInput.addEventListener('change', (e) => {
+      const files = e.target.files;
+      selectedFiles = [];
+      fileList.innerHTML = '';
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.name.toLowerCase().endsWith('.csv')) {
+          selectedFiles.push(file);
+          const div = document.createElement('div');
+          div.className = 'file-item';
+          div.textContent = file.webkitRelativePath || file.name;
+          fileList.appendChild(div);
+        }
+      }
+
+      if (selectedFiles.length > 0) {
+        fileList.classList.add('active');
+      } else {
+        fileList.classList.remove('active');
+      }
+
+      btnUpload.textContent = `${selectedFiles.length} 個のファイルをアップロード開始🚀`;
+      validateUploadState();
+    });
+
+    function validateUploadState() {
+      if (awsConfig && selectedFiles.length > 0 && bucketName.value && prefix.value) {
+        btnUpload.disabled = false;
+      } else {
+        btnUpload.disabled = true;
+      }
+    }
+
+    [bucketName, prefix].forEach(el => el.addEventListener('input', validateUploadState));
+
+    // --- Upload Logic ---
+    btnUpload.addEventListener('click', async () => {
+      if (!awsConfig || selectedFiles.length === 0) return;
+
+      btnUpload.disabled = true;
+      folderInput.disabled = true;
+      progressContainer.classList.add('active');
+      
+      const s3Client = new S3Client(awsConfig);
+      const bucket = bucketName.value.trim();
+      let pre = prefix.value.trim();
+      if (pre && !pre.endsWith('/')) pre += '/';
+
+      let successCount = 0;
+      let errorCount = 0;
+
+      log(`Starting upload of ${selectedFiles.length} files to s3://${bucket}/${pre}`);
+
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
+        const fileName = file.name;
+        const objectKey = pre + fileName;
+
+        log(`Uploading: ${fileName} ...`);
+
+        try {
+          const PART_SIZE = 5 * 1024 * 1024; // 5 MB
+
+          if (file.size <= PART_SIZE) {
+            // 単一アップロード (5MB以下)
+            await s3Client.send(new PutObjectCommand({
+              Bucket: bucket,
+              Key: objectKey,
+              Body: file
+            }));
+            
+            const overallPercent = ((i + 1) / selectedFiles.length) * 100;
+            progressBar.style.width = `${overallPercent}%`;
+            progressPercent.textContent = `${Math.round(overallPercent)}%`;
+            progressText.textContent = `File ${i+1}/${selectedFiles.length}: ${file.name}`;
+            
+          } else {
+            // マルチパートアップロード (> 5MB)
+            const createRes = await s3Client.send(new CreateMultipartUploadCommand({
+              Bucket: bucket,
+              Key: objectKey
+            }));
+            const uploadId = createRes.UploadId;
+            const parts = [];
+            const numParts = Math.ceil(file.size / PART_SIZE);
+
+            for (let partNumber = 1; partNumber <= numParts; partNumber++) {
+              const start = (partNumber - 1) * PART_SIZE;
+              const end = Math.min(start + PART_SIZE, file.size);
+              const blob = file.slice(start, end);
+
+              const partRes = await s3Client.send(new UploadPartCommand({
+                Bucket: bucket,
+                Key: objectKey,
+                PartNumber: partNumber,
+                UploadId: uploadId,
+                Body: blob
+              }));
+
+              parts.push({
+                ETag: partRes.ETag,
+                PartNumber: partNumber
+              });
+
+              // Update progress for multipart
+              const filePercent = partNumber / numParts;
+              const overallPercent = ((i + filePercent) / selectedFiles.length) * 100;
+              progressBar.style.width = `${overallPercent}%`;
+              progressPercent.textContent = `${Math.round(overallPercent)}%`;
+              progressText.textContent = `File ${i+1}/${selectedFiles.length}: ${file.name} (Part ${partNumber}/${numParts})`;
+            }
+
+            await s3Client.send(new CompleteMultipartUploadCommand({
+              Bucket: bucket,
+              Key: objectKey,
+              UploadId: uploadId,
+              MultipartUpload: { Parts: parts }
+            }));
+          }
+
+          successCount++;
+          log(`Success: ${fileName}`, 'success');
+        } catch (err) {
+          errorCount++;
+          log(`Error uploading ${fileName}: ${err.message}`, 'error');
+          console.error(err);
+        }
+      }
+
+      progressBar.style.width = `100%`;
+      progressPercent.textContent = `100%`;
+      progressText.textContent = `Completed! Success: ${successCount}, Errors: ${errorCount}`;
+      btnUpload.disabled = false;
+      folderInput.disabled = false;
+      log(`Upload process finished. Success: ${successCount}. Errors: ${errorCount}.`);
+    });
+
+    // Initialize
+    checkLocalStorage();
+  </script>
+</body>
+</html>
