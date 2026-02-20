@@ -273,6 +273,73 @@
     .log-entry.error { color: var(--error); }
     .log-entry.success { color: var(--success); }
 
+    /* Toast Notification */
+    .toast-container {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .toast {
+      background: var(--success);
+      color: white;
+      padding: 1rem 1.5rem;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px -5px rgba(16, 185, 129, 0.5);
+      font-size: 0.95rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      transform: translateX(120%);
+      opacity: 0;
+      transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    }
+
+    .toast.show {
+      transform: translateX(0);
+      opacity: 1;
+    }
+
+    .toast svg {
+      width: 24px;
+      height: 24px;
+    }
+
+  
+    .styled-select {
+      width: 100%;
+      background: var(--input-bg);
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+      padding: 0.85rem 1rem;
+      border-radius: 12px;
+      font-size: 1rem;
+      transition: all 0.3s ease;
+      font-family: 'Inter', sans-serif;
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2394a3b8%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.4-12.8z%22%2F%3E%3C%2Fsvg%3E");
+      background-repeat: no-repeat;
+      background-position: right 1rem center;
+      background-size: 0.65em auto;
+      cursor: pointer;
+    }
+    .styled-select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+    }
+    .styled-select option, .styled-select optgroup {
+      background-color: #1e293b;
+      color: var(--text-main);
+    }
+    
   </style>
 </head>
 <body>
@@ -302,6 +369,13 @@
       <input type="text" id="bucketName" value="twins-digital-data-test" placeholder="e.g. twins-digital-data">
     </div>
 
+    
+    <div class="form-group">
+      <label for="mcSelect">技セ・メセを選択 (自動でパスが入力されます)</label>
+      <select id="mcSelect" class="styled-select">
+        <option value="">-- 手動入力・選択なし --</option>
+      </select>
+    </div>
     <div class="form-group">
       <label for="prefix">アップロード先フォルダ</label>
       <input type="text" id="prefix" value="tableau-access/oomiya/oomiya-mc/" placeholder="e.g. folder/path/">
@@ -331,6 +405,8 @@
     <div class="log-area" id="logArea"></div>
   </div>
 
+  <div class="toast-container" id="toastContainer"></div>
+
   <script type="module">
     import { 
       S3Client, 
@@ -357,9 +433,436 @@
     const progressPercent = document.getElementById('progressPercent');
     const progressText = document.getElementById('progressText');
     const logArea = document.getElementById('logArea');
+    const toastContainer = document.getElementById('toastContainer');
 
     let awsConfig = null;
     let selectedFiles = [];
+
+    // --- Toast Notification ---
+    function showToast(message) {
+      const toast = document.createElement('div');
+      toast.className = 'toast';
+      toast.innerHTML = `
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+        ${message}
+      `;
+      toastContainer.appendChild(toast);
+      
+      // Animate in
+      setTimeout(() => toast.classList.add('show'), 10);
+      
+      // Remove after 5 seconds
+      setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 400); // Wait for transition
+      }, 5000);
+    }
+
+
+
+
+
+
+    const mcData = [
+  {
+    "code": 211,
+    "name": "盛岡支社",
+    "items": [
+      {
+        "code": "83500",
+        "name": "盛岡電力設備技術センター",
+        "path": "tableau-access/morioka/morioka/"
+      },
+      {
+        "code": "83501",
+        "name": "一ノ関電力メンテナンスセンター",
+        "path": "tableau-access/morioka/ichinoseki-mc/"
+      },
+      {
+        "code": "83503",
+        "name": "盛岡電力メンテナンスセンター",
+        "path": "tableau-access/morioka/morioka-mc/"
+      },
+      {
+        "code": "83507",
+        "name": "青森電力メンテナンスセンター",
+        "path": "tableau-access/morioka/aomori-mc/"
+      }
+    ]
+  },
+  {
+    "code": 212,
+    "name": "秋田支社",
+    "items": [
+      {
+        "code": "83500",
+        "name": "秋田電力設備技術センター",
+        "path": "tableau-access/akita/akita/"
+      },
+      {
+        "code": "83501",
+        "name": "大曲電力メンテナンスセンター",
+        "path": "tableau-access/akita/oomagari-mc/"
+      },
+      {
+        "code": "83502",
+        "name": "秋田電力メンテナンスセンター",
+        "path": "tableau-access/akita/akita-mc/"
+      },
+      {
+        "code": "83504",
+        "name": "弘前電力メンテナンスセンター",
+        "path": "tableau-access/akita/hirosaki-mc/"
+      }
+    ]
+  },
+  {
+    "code": 213,
+    "name": "仙台支社",
+    "items": [
+      {
+        "code": "83502",
+        "name": "郡山電力メンテナンスセンター",
+        "path": "tableau-access/sendai/koriyama-mc/"
+      },
+      {
+        "code": "83503",
+        "name": "福島電力メンテナンスセンター",
+        "path": "tableau-access/sendai/fukushima-mc/"
+      },
+      {
+        "code": "83510",
+        "name": "仙台電力設備技術センター",
+        "path": "tableau-access/sendai/sendai/"
+      },
+      {
+        "code": "83512",
+        "name": "仙台電力メンテナンスセンター",
+        "path": "tableau-access/sendai/sendai-mc/"
+      },
+      {
+        "code": "83515",
+        "name": "山形電力メンテナンスセンター",
+        "path": "tableau-access/sendai/yamagata-mc/"
+      }
+    ]
+  },
+  {
+    "code": 300,
+    "name": "新潟支社",
+    "items": [
+      {
+        "code": "83500",
+        "name": "新潟電力設備技術センター",
+        "path": "tableau-access/niigata/niigata/"
+      },
+      {
+        "code": "83502",
+        "name": "酒田電力メンテナンスセンター",
+        "path": "tableau-access/niigata/sakata-mc/"
+      },
+      {
+        "code": "83505",
+        "name": "長岡電力メンテナンスセンター",
+        "path": "tableau-access/niigata/nagaoka-mc/"
+      },
+      {
+        "code": "83506",
+        "name": "新潟電力メンテナンスセンター",
+        "path": "tableau-access/niigata/niigata-mc/"
+      }
+    ]
+  },
+  {
+    "code": 411,
+    "name": "高崎支社",
+    "items": [
+      {
+        "code": "83500",
+        "name": "高崎電力設備技術センター",
+        "path": "tableau-access/takasaki/takasaki/"
+      },
+      {
+        "code": "83501",
+        "name": "桶川電力メンテナンスセンター",
+        "path": "tableau-access/takasaki/okegawa-mc/"
+      },
+      {
+        "code": "83502",
+        "name": "熊谷電力メンテナンスセンター",
+        "path": "tableau-access/takasaki/kumagaya-mc/"
+      },
+      {
+        "code": "83503",
+        "name": "高崎電力メンテナンスセンター",
+        "path": "tableau-access/takasaki/takasaki-mc/"
+      }
+    ]
+  },
+  {
+    "code": 412,
+    "name": "水戸支社",
+    "items": [
+      {
+        "code": "83500",
+        "name": "水戸電力設備技術センター",
+        "path": "tableau-access/mito/mito/"
+      },
+      {
+        "code": "83501",
+        "name": "土浦電力メンテナンスセンター",
+        "path": "tableau-access/mito/tsuchiura-mc/"
+      },
+      {
+        "code": "83502",
+        "name": "水戸電力メンテナンスセンター",
+        "path": "tableau-access/mito/mito-mc/"
+      },
+      {
+        "code": "83504",
+        "name": "いわき電力メンテナンスセンター",
+        "path": "tableau-access/mito/iwaki-mc/"
+      },
+      {
+        "code": "83505",
+        "name": "原ノ町電力メンテナンスセンター",
+        "path": "tableau-access/mito/haranomachi-mc/"
+      }
+    ]
+  },
+  {
+    "code": 413,
+    "name": "千葉支社",
+    "items": [
+      {
+        "code": "83500",
+        "name": "千葉電力設備技術センター",
+        "path": "tableau-access/chiba/chiba/"
+      },
+      {
+        "code": "83501",
+        "name": "新小岩電力メンテナンスセンター",
+        "path": "tableau-access/chiba/shinkoiwa-mc/"
+      },
+      {
+        "code": "83502",
+        "name": "西船橋電力メンテナンスセンター",
+        "path": "tableau-access/chiba/nishifunabashi-mc/"
+      },
+      {
+        "code": "83503",
+        "name": "千葉電力メンテナンスセンター",
+        "path": "tableau-access/chiba/chiba-mc/"
+      },
+      {
+        "code": "83505",
+        "name": "一ノ宮電力メンテナンスセンター",
+        "path": "tableau-access/chiba/ichinomiya-mc/"
+      },
+      {
+        "code": "83506",
+        "name": "木更津電力メンテナンスセンター",
+        "path": "tableau-access/chiba/kisarazu-mc/"
+      },
+      {
+        "code": "83508",
+        "name": "成田電力メンテナンスセンター",
+        "path": "tableau-access/chiba/narita-mc/"
+      }
+    ]
+  },
+  {
+    "code": 415,
+    "name": "大宮支社",
+    "items": [
+      {
+        "code": "83500",
+        "name": "大宮電力設備技術センター",
+        "path": "tableau-access/omiya/omiya/"
+      },
+      {
+        "code": "83501",
+        "name": "浦和電力メンテナンスセンター",
+        "path": "tableau-access/omiya/urawa-mc/"
+      },
+      {
+        "code": "83502",
+        "name": "大宮電力メンテナンスセンター",
+        "path": "tableau-access/omiya/omiya-mc/"
+      },
+      {
+        "code": "83503",
+        "name": "宇都宮電力メンテナンスセンター",
+        "path": "tableau-access/omiya/utsunomiya-mc/"
+      },
+      {
+        "code": "83504",
+        "name": "那須電力メンテナンスセンター",
+        "path": "tableau-access/omiya/nasu-mc/"
+      }
+    ]
+  },
+  {
+    "code": 416,
+    "name": "首都圏本部",
+    "items": [
+      {
+        "code": "84500",
+        "name": "品川電力設備技術センター",
+        "path": "tableau-access/shinagawa/shinagawa/"
+      },
+      {
+        "code": "84501",
+        "name": "品川電力設備技術センター",
+        "path": "tableau-access/shinagawa/shinagawa-mc/"
+      },
+      {
+        "code": "84600",
+        "name": "新宿電力設備技術センター",
+        "path": "tableau-access/shinjuku/shinjuku/"
+      },
+      {
+        "code": "84601",
+        "name": "新宿電力設備技術センター",
+        "path": "tableau-access/shinjuku/shinjuku-mc/"
+      },
+      {
+        "code": "84700",
+        "name": "上野電力設備技術センター",
+        "path": "tableau-access/ueno/ueno/"
+      },
+      {
+        "code": "84701",
+        "name": "上野電力設備技術センター（我孫子除く）",
+        "path": "tableau-access/ueno/ueno-not-abiko/"
+      },
+      {
+        "code": "84750",
+        "name": "上野電力設備技セ　我孫子電力オフィス",
+        "path": "tableau-access/ueno/ueno-abiko/"
+      }
+    ]
+  },
+  {
+    "code": 417,
+    "name": "横浜支社",
+    "items": [
+      {
+        "code": "83500",
+        "name": "横浜電力設備技術センター",
+        "path": "tableau-access/yokohama/yokohama/"
+      },
+      {
+        "code": "83501",
+        "name": "鶴見電力メンテナンスセンター",
+        "path": "tableau-access/yokohama/tsurumi-mc/"
+      },
+      {
+        "code": "83502",
+        "name": "横浜電力メンテナンスセンター",
+        "path": "tableau-access/yokohama/yokohama-mc/"
+      },
+      {
+        "code": "83503",
+        "name": "大船電力メンテナンスセンター",
+        "path": "tableau-access/yokohama/ofuna-mc/"
+      },
+      {
+        "code": "83504",
+        "name": "小田原電力メンテナンスセンター",
+        "path": "tableau-access/yokohama/odawara-mc/"
+      },
+      {
+        "code": "83505",
+        "name": "橋本電力メンテナンスセンター",
+        "path": "tableau-access/yokohama/hashimoto-mc/"
+      }
+    ]
+  },
+  {
+    "code": 418,
+    "name": "八王子支社",
+    "items": [
+      {
+        "code": "83500",
+        "name": "八王子電力設備技術センター",
+        "path": "tableau-access/hachioji/hachioji/"
+      },
+      {
+        "code": "83501",
+        "name": "立川電力メンテナンスセンター",
+        "path": "tableau-access/hachioji/tachikawa-mc/"
+      },
+      {
+        "code": "83502",
+        "name": "八王子電力メンテナンスセンター",
+        "path": "tableau-access/hachioji/hachioji-mc/"
+      },
+      {
+        "code": "83503",
+        "name": "大月電力メンテナンスセンター",
+        "path": "tableau-access/hachioji/otsuki-mc/"
+      },
+      {
+        "code": "83504",
+        "name": "甲府電力メンテナンスセンター",
+        "path": "tableau-access/hachioji/kofu-mc/"
+      }
+    ]
+  },
+  {
+    "code": 511,
+    "name": "長野支社",
+    "items": [
+      {
+        "code": "83500",
+        "name": "長野電力設備技術センター",
+        "path": "tableau-access/nagano/nagano/"
+      },
+      {
+        "code": "83501",
+        "name": "長野電力メンテナンスセンター",
+        "path": "tableau-access/nagano/nagano-mc/"
+      },
+      {
+        "code": "83503",
+        "name": "松本電力メンテナンスセンター",
+        "path": "tableau-access/nagano/matsumoto-mc/"
+      },
+      {
+        "code": "83504",
+        "name": "上諏訪電力メンテナンスセンター",
+        "path": "tableau-access/nagano/kamisuwa-mc/"
+      }
+    ]
+  }
+];
+    const mcSelect = document.getElementById('mcSelect');
+    
+    if (mcSelect) {
+      mcData.forEach(branch => {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = branch.name;
+        branch.items.forEach(item => {
+          const option = document.createElement('option');
+          option.value = item.path;
+          option.textContent = `${item.name} (${item.code})`;
+          optgroup.appendChild(option);
+        });
+        mcSelect.appendChild(optgroup);
+      });
+
+      mcSelect.addEventListener('change', (e) => {
+        if (e.target.value) {
+          document.getElementById('prefix').value = e.target.value;
+          // prefix input event won't trigger automatically when modified programmatically
+          // so we trigger the event to update the state.
+          document.getElementById('prefix').dispatchEvent(new Event('input'));
+        }
+      });
+    }
+
+
 
     // --- Logger ---
     function log(message, type = 'info') {
@@ -576,6 +1079,10 @@
       btnUpload.disabled = false;
       folderInput.disabled = false;
       log(`Upload process finished. Success: ${successCount}. Errors: ${errorCount}.`);
+      
+      if (successCount > 0) {
+        showToast(`アップロードが完了しました (${successCount} 件)`);
+      }
     });
 
     // Initialize
