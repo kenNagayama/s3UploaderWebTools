@@ -351,6 +351,100 @@
       color: var(--text-main);
     }
     
+    /* Server Files Section */
+    .server-files-container {
+      margin-top: 3rem;
+      border-top: 1px solid var(--card-border);
+      padding-top: 2rem;
+    }
+    
+    .server-files-container h2 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      color: var(--text-main);
+    }
+
+    .btn-secondary {
+      background: transparent;
+      border: 1px solid var(--primary);
+      color: var(--primary);
+      padding: 0.6rem 1.2rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      margin-bottom: 1rem;
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: var(--primary);
+      color: white;
+    }
+    
+    .btn-secondary:disabled {
+      border-color: var(--card-border);
+      color: var(--text-muted);
+      cursor: not-allowed;
+    }
+
+    .server-files-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+      font-size: 0.85rem;
+      background: var(--input-bg);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .server-files-table th, .server-files-table td {
+      padding: 0.75rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    .server-files-table th {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .server-files-table tr:last-child td {
+      border-bottom: none;
+    }
+    
+    .server-files-table .empty-state {
+      text-align: center;
+      padding: 2rem;
+      color: var(--text-muted);
+    }
+
+    .btn-delete {
+      background: transparent;
+      border: 1px solid var(--error);
+      color: var(--error);
+      padding: 0.3rem 0.6rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-delete:hover {
+      background: var(--error);
+      color: white;
+    }
+    
+    .btn-delete:disabled {
+      border-color: var(--card-border);
+      color: var(--text-muted);
+      background: transparent;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 <body>
@@ -398,6 +492,34 @@
 
     <div class="log-area" id="logArea"></div>
 
+    <!-- Server Files Management -->
+    <div class="server-files-container">
+      <h2>サーバー上のファイル確認・削除</h2>
+      <p class="subtitle" style="text-align: left; margin-bottom: 1rem;">
+        入力されている「アップロード先フォルダ」配下のファイルを表示します。削除したファイルはシステム管理者のみ復旧可能です。
+      </p>
+      <div id="currentPathDisplay" style="margin-bottom: 1rem; padding: 0.8rem; background: rgba(99, 102, 241, 0.1); border-left: 4px solid var(--primary); border-radius: 4px; display: none; font-size: 0.9rem;">
+        <strong>📂 参照中のフォルダ:</strong> <span id="currentPathText"></span>
+      </div>
+      <button class="btn-secondary" id="btnListObjects">ファイル一覧を取得</button>
+      
+      <table class="server-files-table" id="serverFilesTable">
+        <thead>
+          <tr>
+            <th>ファイル名</th>
+            <th>サイズ</th>
+            <th>更新日時</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="serverFilesBody">
+          <tr>
+            <td colspan="4" class="empty-state">「ファイル一覧を取得」ボタンを押してください</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
     <!-- License / Footer -->
     <div style="margin-top: 2rem; text-align: center; font-size: 0.75rem; color: var(--text-muted); border-top: 1px solid var(--card-border); padding-top: 1rem;">
       &copy; 2026 Innovation Strategy Headquarters Digital & Data Innovation Center. All Rights Reserved.
@@ -423,6 +545,12 @@
     const progressPercent = document.getElementById('progressPercent');
     const progressText = document.getElementById('progressText');
     const toastContainer = document.getElementById('toastContainer');
+    
+    // Server Files DOM
+    const btnListObjects = document.getElementById('btnListObjects');
+    const serverFilesBody = document.getElementById('serverFilesBody');
+    const currentPathDisplay = document.getElementById('currentPathDisplay');
+    const currentPathText = document.getElementById('currentPathText');
 
     // --- Toast Notification ---
     function showToast(message) {
@@ -1091,6 +1219,130 @@
         showToast(`アップロードが完了しました (${successCount} 件)`);
       }
     });
+    
+    // --- Server Files Management Logic ---
+    function formatBytes(bytes, decimals = 2) {
+      if (!+bytes) return '0 Bytes';
+      const k = 1024;
+      const dm = decimals < 0 ? 0 : decimals;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+    }
+
+    function formatDate(isoString) {
+      const date = new Date(isoString);
+      return date.toLocaleString('ja-JP');
+    }
+
+    btnListObjects.addEventListener('click', async () => {
+      let pre = prefix.value.trim().replace(/[\\¥]/g, '/');
+      if (!pre) {
+        showToast('プレフィックス（アップロード先フォルダ）が指定されていません');
+        return;
+      }
+      if (!pre.endsWith('/')) pre += '/';
+      
+      // Update UI with Current MC name (Plan A)
+      const mcSelect = document.getElementById('mcSelect');
+      const selectedOption = mcSelect.options[mcSelect.selectedIndex];
+      const mcName = (selectedOption && selectedOption.value) ? selectedOption.text : '手動入力パス';
+      currentPathText.textContent = `${mcName}  (${pre})`;
+      currentPathDisplay.style.display = 'block';
+
+      btnListObjects.disabled = true;
+      btnListObjects.textContent = '取得中...';
+      serverFilesBody.innerHTML = '<tr><td colspan="4" class="empty-state">読み込み中...</td></tr>';
+
+      try {
+        const res = await fetch(BACKEND_URL, {
+          method: 'POST',
+          body: JSON.stringify({
+            action: 'listObjects',
+            prefix: pre
+          })
+        });
+
+        if (!res.ok) throw new Error(`Backend Error: ${res.statusText}`);
+        
+        const data = await res.json();
+        const objects = data.objects || [];
+        
+        serverFilesBody.innerHTML = '';
+        
+        if (objects.length === 0) {
+          serverFilesBody.innerHTML = '<tr><td colspan="4" class="empty-state">指定されたフォルダにファイルはありません</td></tr>';
+        } else {
+          objects.forEach(obj => {
+            // Plan B: 相対パスでの表示 (例: pre が `a/` で obj.key が `a/b/c.csv` なら `b/c.csv` を表示)
+            const relativePath = obj.key.startsWith(pre) ? obj.key.slice(pre.length) : obj.key;
+            const displayPath = relativePath || obj.key; // フォールバック
+            
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td title="フルパス: ${obj.key}">${displayPath}</td>
+              <td>${formatBytes(obj.size)}</td>
+              <td>${formatDate(obj.lastModified)}</td>
+              <td><button class="btn-delete" data-key="${obj.key}">削除</button></td>
+            `;
+            serverFilesBody.appendChild(tr);
+          });
+          
+          // 削除ボタンへのイベントリスナー登録
+          document.querySelectorAll('.btn-delete').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+              const objectKey = e.target.getAttribute('data-key');
+              if (confirm(`本当に「${objectKey}」を削除しますか？\n(復元にはシステム管理者の作業が必要です)`)) {
+                await deleteObject(objectKey, e.target);
+              }
+            });
+          });
+        }
+        
+        log(`Fetched ${objects.length} objects for prefix: ${pre}`);
+      } catch (err) {
+        serverFilesBody.innerHTML = `<tr><td colspan="4" class="empty-state" style="color:var(--error);">エラーが発生しました: ${err.message}</td></tr>`;
+        log(`Error listing objects: ${err.message}`, 'error');
+      } finally {
+        btnListObjects.disabled = false;
+        btnListObjects.textContent = 'ファイル一覧を取得';
+      }
+    });
+
+    async function deleteObject(objectKey, buttonElement) {
+      buttonElement.disabled = true;
+      buttonElement.textContent = '削除中...';
+      
+      try {
+        const res = await fetch(BACKEND_URL, {
+          method: 'POST',
+          body: JSON.stringify({
+            action: 'deleteObject',
+            objectKey: objectKey
+          })
+        });
+
+        if (!res.ok) throw new Error(`Backend Error: ${res.statusText}`);
+        
+        showToast('ファイルを削除しました');
+        log(`Deleted object: ${objectKey}`, 'success');
+        
+        // 行をUIから消す
+        const tr = buttonElement.closest('tr');
+        if (tr) tr.remove();
+        
+        // 全部消えたらEmpty stateを表示
+        if (serverFilesBody.children.length === 0) {
+           serverFilesBody.innerHTML = '<tr><td colspan="4" class="empty-state">指定されたフォルダにファイルはありません</td></tr>';
+        }
+
+      } catch (err) {
+        showToast('ファイルの削除に失敗しました');
+        log(`Error deleting object ${objectKey}: ${err.message}`, 'error');
+        buttonElement.disabled = false;
+        buttonElement.textContent = '削除';
+      }
+    }
   </script>
 </body>
 </html>
