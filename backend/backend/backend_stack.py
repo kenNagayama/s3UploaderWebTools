@@ -120,7 +120,7 @@ class BackendStack(Stack):
             )
         )
 
-        # 7. Glue Table with Partition Projection
+        # 7. Glue Table (No Partitions for Full Extract capability)
         table_name = "twins_digital_data"
         glue_table = glue.CfnTable(
             self,
@@ -133,16 +133,8 @@ class BackendStack(Stack):
                 parameters={
                     "skip.header.line.count": "3",
                     "classification": "csv",
-                    "use.null.for.invalid.data": "true",
-                    "projection.enabled": "true",
-                    "projection.branch.type": "injected",
-                    "projection.mc.type": "injected",
-                    "storage.location.template": f"s3://{athena_data_bucket.bucket_name}/tableau-access/${{branch}}/${{mc}}/"
+                    "use.null.for.invalid.data": "true"
                 },
-                partition_keys=[
-                    glue.CfnTable.ColumnProperty(name="branch", type="string"),
-                    glue.CfnTable.ColumnProperty(name="mc", type="string"),
-                ],
                 storage_descriptor=glue.CfnTable.StorageDescriptorProperty(
                     location=f"s3://{athena_data_bucket.bucket_name}/tableau-access/",
                     input_format="org.apache.hadoop.mapred.TextInputFormat",

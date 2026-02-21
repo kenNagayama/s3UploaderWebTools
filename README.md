@@ -22,7 +22,7 @@ AWS CDK (Python + `uv`) を用いてインフラストラクチャをコード�
 * **AthenaDataBucket (クエリ用S3)**: `CsvTransformHandler` でクレンジングされた後のUTF-8形式のCSVが格納されます。
 * **AWS Glue & Athena**: 
   * `tableau_access_db.twins_digital_data` テーブルとしてデータをスキーマ定義。
-  * `branch` と `mc` 等のパーティションキーによるPartition Projection機能を使用し、高速なクエリを実現。
+  * S3上のパスに関わらず、すべてのファイルを再帰的に読み込んでフルデータ（全量）を抽出可能。
   * 空文字をNullとして扱う設定（`use.null.for.invalid.data`）でパースエラーを防止。
 * **Tableau 連携用 IAM ユーザー**:
   * Tableau Server等外部BIツールからAthena経由でデータを読み取るための専用IAMユーザー。
@@ -94,19 +94,12 @@ uv run cdk deploy --require-approval never
 
 ### Athena コンソールでの動作確認用クエリ
 
-開発者がAWSマネジメントコンソール上の **Athena クエリエディタ** で直接データをテスト・確認する際は、以下のSQLを参考にしてください。
-
-> [!WARNING]
-> 本テーブルは `branch` (技セ) と `mc` (MC) の **Partition Projection (injected type)** を使用しています。
-> そのため、すべてのクエリの `WHERE` 句で必ず `branch = '...'` および `mc = '...'` を等価条件で指定する必要があります。指定しないクエリは `CONSTRAINT_VIOLATION` のエラーとなります。
+開発者がAWSマネジメントコンソール上の **Athena クエリエディタ** で直接データをテスト・確認する際は、以下のSQLを参考にしてください。Tableau上では全量を抽出（データソース抽出）することが可能です。
 
 ```sql
--- 基本的なデータプレビュー (必須の2つのパーティションキーを指定)
--- ※ 'omiya', 'omiya-mc' の部分は実際にアップロードしたフォルダ名に合わせて変更してください
+-- すべてのデータを50行だけプレビューする (Tableauでの全量抽出時のプレビューに相当)
 SELECT * 
 FROM "tableau_access_db"."twins_digital_data" 
-WHERE branch = 'omiya' 
-  AND mc = 'omiya-mc'
 LIMIT 50;
 
 -- 測定年などの数値カラムによるフィルタリングと、必要なカラムのみの抽出
@@ -116,8 +109,6 @@ SELECT
     "測定年", 
     "摩耗_平均値"
 FROM "tableau_access_db"."twins_digital_data" 
-WHERE branch = 'omiya'     -- 必須
-  AND mc = 'omiya-mc'      -- 必須
-  AND "測定年" = 2020      -- 任意のフィルタリング
+WHERE "測定年" = 2020      -- 任意のフィルタリング
 LIMIT 10;
 ```
