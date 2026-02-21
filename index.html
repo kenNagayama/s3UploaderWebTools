@@ -346,7 +346,7 @@
 
   <div class="container">
     <h1>Twins デジタルデータ アップロードツール</h1>
-    <p class="subtitle">Secure, local-only bulk CSV uploader</p>
+    <p class="subtitle">軽技Webから出力したCSVをTableau用にAmazon S3にアップロードするツール</p>
 
     <!-- Credentials Section -->
     <div class="form-group" id="envInputGroup">
@@ -378,7 +378,7 @@
     </div>
     <div class="form-group">
       <label for="prefix">アップロード先フォルダ</label>
-      <input type="text" id="prefix" value="tableau-access/oomiya/oomiya-mc/" placeholder="e.g. folder/path/">
+      <input type="text" id="prefix" value="tableau-access/common/share/" placeholder="e.g. folder/path/">
     </div>
 
     <!-- File Selection Section -->
@@ -403,6 +403,11 @@
     </div>
 
     <div class="log-area" id="logArea"></div>
+
+    <!-- License / Footer -->
+    <div style="margin-top: 2rem; text-align: center; font-size: 0.75rem; color: var(--text-muted); border-top: 1px solid var(--card-border); padding-top: 1rem;">
+      &copy; 2026 Innovation Strategy Headquarters Digital & Data Innovation Center. All Rights Reserved.
+    </div>
   </div>
 
   <div class="toast-container" id="toastContainer"></div>
