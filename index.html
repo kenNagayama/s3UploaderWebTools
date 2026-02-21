@@ -60,6 +60,7 @@
       margin-bottom: 0.5rem;
       background: linear-gradient(to right, #818cf8, #c084fc);
       -webkit-background-clip: text;
+      background-clip: text;
       -webkit-text-fill-color: transparent;
       text-align: center;
     }
@@ -109,6 +110,15 @@
     }
 
     input[type="file"]::file-selector-button {
+      display: none; /* Hide default button in modern browsers */
+    }
+    input[type="file"]::-webkit-file-upload-button {
+      display: none; /* Hide default button in webkit */
+    }
+
+    input[type="file"]::before {
+      content: 'フォルダ選択';
+      display: inline-block;
       background: var(--primary);
       color: white;
       border: none;
@@ -118,9 +128,10 @@
       cursor: pointer;
       font-weight: 600;
       transition: background 0.3s ease;
+      font-size: 0.9rem;
     }
 
-    input[type="file"]::file-selector-button:hover {
+    input[type="file"]:hover::before {
       background: var(--primary-hover);
     }
 
@@ -845,20 +856,102 @@
     }
 
 
-    folderInput.addEventListener('change', (e) => {
+    // --- Schema Validation ---
+    const EXPECTED_HEADERS = [
+      "No", "測定年", "年内通番", "支社コード", "技セコード", "メセコード", 
+      "箇所名", "行路ID", "行路名称", "測定年月日", "線名コード", "線名名称", 
+      "通称線名コード", "通称線名名称", "線別コード", "線別名称", "駅・駅々間コード", 
+      "駅・駅々間名称", "電柱番号", "電柱通番", "架線構造", "架線構造名", "トロリ線種", 
+      "制御状況", "制御状況名", "電柱検知", "電柱検知名", "電柱間隔_標準", "電柱間隔_実測", 
+      "CH", "親ドラム番号", "子ドラム番号", "ドラム識別番号", "摩耗_最小値_1", 
+      "摩耗_最小値_2", "摩耗_最小値_3", "摩耗_最小値_4", "摩耗_最小値_5", "摩耗_最小値_6", 
+      "摩耗_最小値_7", "摩耗_最小値_8", "摩耗_最小値_9", "摩耗_最小値_10", 
+      "摩耗_最小値_11", "摩耗_最小値_12", "摩耗_最小値_13", "摩耗_最小値_14", 
+      "摩耗_管理度数－P0", "摩耗_管理度数－P1", "摩耗_管理度数－P2", "摩耗_平均値", 
+      "摩耗_標準偏差", "摩耗_管理値－P0", "摩耗_管理値－P1", "摩耗_管理値－P2", 
+      "動的偏位_最大偏位_左", "動的偏位_最大偏位_右", "動的偏位_起点側支持点", 
+      "動的偏位_終点側支持点", "動的偏位_径間中心", "静的偏位_最大偏位_左", 
+      "静的偏位_最大偏位_右", "静的偏位_起点側支持点", "静的偏位_終点側支持点", 
+      "静的偏位_径間中心", "高さ_最大値_径間内", "高さ_最小値_径間内", "高さ_起点側支持点", 
+      "高さ_終点側支持点", "高さ_径間中心", "支障物_左", "支障物_右", "離隔", "平行長", 
+      "勾配", "硬点_最大_上", "硬点_最大_下", "パンタ衝撃_最大_前", "パンタ衝撃_最大_後", 
+      "降雨フラグ", "降雨フラグ名", "タイムコード_先頭", "歴重ね無効フラグ"
+    ];
+
+    function checkCsvSchema(file) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const content = e.target.result;
+          const lines = content.split(/\r?\n/);
+          
+          let isValid = false;
+          // Look for the header in the first 5 lines
+          for (let lineIdx = 0; lineIdx < Math.min(5, lines.length); lineIdx++) {
+            const cleanLine = lines[lineIdx].replace(/^\uFEFF/, '').replace(/"/g, '');
+            const headers = cleanLine.split(',');
+            
+            if (headers.length === EXPECTED_HEADERS.length) {
+              let lineMatches = true;
+              for(let i = 0; i < EXPECTED_HEADERS.length; i++) {
+                 if (headers[i].trim() !== EXPECTED_HEADERS[i]) {
+                    lineMatches = false;
+                    break;
+                 }
+              }
+              if (lineMatches) {
+                isValid = true;
+                break;
+              }
+            }
+          }
+          resolve(isValid);
+        };
+        reader.onerror = () => resolve(false);
+        // Read only the first 4KB to save memory and time
+        const slice = file.slice(0, 4096);
+        reader.readAsText(slice, 'Shift_JIS');
+      });
+    }
+
+    folderInput.addEventListener('change', async (e) => {
       const files = e.target.files;
       selectedFiles = [];
       fileList.innerHTML = '';
+      let invalidCount = 0;
+
+      // Lock UI while checking schemas if many files
+      folderInput.disabled = true;
+      btnUpload.disabled = true;
+      btnUpload.textContent = "スキーマチェック中...";
 
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        if (file.name.toLowerCase().endsWith('.csv')) {
-          selectedFiles.push(file);
-          const div = document.createElement('div');
-          div.className = 'file-item';
-          div.textContent = file.webkitRelativePath || file.name;
-          fileList.appendChild(div);
+        
+        // Exclude files in subdirectories (webkitRelativePath looks like "folder/subfolder/file.csv")
+        if (file.webkitRelativePath && file.webkitRelativePath.split('/').length > 2) {
+           continue; 
         }
+
+        if (file.name.toLowerCase().endsWith('.csv')) {
+          const isValid = await checkCsvSchema(file);
+          if (isValid) {
+            selectedFiles.push(file);
+            const div = document.createElement('div');
+            div.className = 'file-item';
+            div.textContent = file.webkitRelativePath || file.name;
+            fileList.appendChild(div);
+          } else {
+            invalidCount++;
+            log(`Skipped ${file.name}: 無効なCSVスキーマです`, 'error');
+          }
+        }
+      }
+
+      folderInput.disabled = false;
+
+      if (invalidCount > 0) {
+        showToast(`${invalidCount}件のファイルがスキーマ不一致のため除外されました`);
       }
 
       if (selectedFiles.length > 0) {
@@ -911,7 +1004,8 @@
               action: 'getUploadUrls',
               fileName: fileName,
               prefix: pre,
-              fileSize: file.size
+              fileSize: file.size,
+              csvHeader: EXPECTED_HEADERS.join(',')
             })
           });
 
