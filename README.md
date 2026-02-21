@@ -1,22 +1,49 @@
-# Twins デジタルデータ アップロードツール
+# Twins デジタルデータ アップロード & データ分析基盤
 
-ブラウザ単体（HTML + JS + CSS）で動作する、S3 へのセキュアなマルチパート対応 CSV アップローダーです。
-バックエンドとしてAWS AWS CDK (Python) を用いた署名付きURL (Pre-signed URL) 発行用のLambda関数を利用しており、生のAWSアクセスキーをブラウザ側で保持しない安全な設計となっています。
+ブラウザ単体（HTML + JS + CSS）で動作する、S3 へのセキュアなマルチパート対応 CSV アップローダー、およびアップロードされたデータをTableauやAmazon Athenaから分析するための自動クレンジングパイプラインを備えたシステムです。
 
-## アプリケーション構成
+バックエンドとしてAWS CDK (Python) を用いた署名付きURL (Pre-signed URL) 発行用のLambda関数を利用しており、生のAWSアクセスキーをブラウザ側で保持しない安全な設計となっています。アップロードされたデータはLambdaによって自動的に分析に適した形式へと変換されます。
 
-- **フロントエンド (`index.html`)**: HTML/JS/CSSの単一ファイル。ユーザーUIを提供し、バックエンドから取得した署名付きURLを用いてS3へ直接ファイルをアップロードします。
-- **バックエンド (`backend/`)**: AWS CDK (Python + `uv`) を用いて構築されたインフラストラクチャコード。
-  - **S3 バケット**: アップロード先のストレージ。CORS設定が行われています。
-  - **Lambda 関数**: フロントエンドからのリクエストに基づき、S3への署名付きURLを一時的に発行するAPI（関数URL）を提供します。
+## システムアーキテクチャ
+
+システムは大きく分けて「アップロード」と「データ変換・分析」の2つのフェーズで構成されています。
+
+### 1. フロントエンド (`index.html`)
+HTML/JS/CSSの単一ファイルです。ユーザーUIを提供し、バックエンドから取得した署名付きURLを用いてS3へ直接CSVファイルをマルチパートで高速にアップロードします。
+
+### 2. バックエンド (`backend/`)
+AWS CDK (Python + `uv`) を用いてインフラストラクチャをコード化しています。
+
+* **DataUploadBucket (生データ用S3)**: フロントエンドからのファイルアップロードを直接受け付けるバケットです。CORS設定が行われています。
+* **PresignedUrlHandler (Lambda)**: フロントエンドからのリクエストに基づき、S3へのアップロード・マルチパート結合用の一時的な署名付きURLを発行するAPI（関数URL）を提供します。
+* **CsvTransformHandler (Lambda)**: `DataUploadBucket` へのファイルアップロードをトリガーに自動起動します。以下のデータクレンジング処理を実行します：
+  * **エンコーディング変換**: Shift-JIS形式のCSVをUTF-8に変換。
+  * **Excel数式の除去**: `="2020"` 等のExcel用数式エスケープを純粋な値(`2020`)に変換。
+* **AthenaDataBucket (クエリ用S3)**: `CsvTransformHandler` でクレンジングされた後のUTF-8形式のCSVが格納されます。
+* **AWS Glue & Athena**: 
+  * `tableau_access_db.twins_digital_data` テーブルとしてデータをスキーマ定義。
+  * `branch` と `mc` 等のパーティションキーによるPartition Projection機能を使用し、高速なクエリを実現。
+  * 空文字をNullとして扱う設定（`use.null.for.invalid.data`）でパースエラーを防止。
+* **Tableau 連携用 IAM ユーザー**:
+  * Tableau Server等外部BIツールからAthena経由でデータを読み取るための専用IAMユーザー。
 
 ## フロントエンドの使い方
 
 1. `index.html` をブラウザ（Chrome, Edge等）で開きます。
-2. アップロード先の「S3 バケット名」および「アップロード先フォルダ」を入力します（デフォルト値が入力されています）。
+2. アップロード先のプレフィックス（支社名やMC名など）を選択・入力します。
 3. アップロードしたいローカルのフォルダを選択します。ディレクトリ内の `.csv` ファイルのみが自動抽出されます。
-4. 「ファイル数個のファイルをアップロード開始🚀」ボタンを押して実行します。
+4. 「アップロード開始🚀」ボタンを押して実行します。
 5. （内部的にバックエンドから署名付きURLを取得し、S3へのアップロードが進行します）
+
+## クレンジングとデータ分析の仕組み
+
+フロントエンドからアップロードされたファイルは即座にはダッシュボードに反映されません。
+1. `DataUploadBucket` にファイルが保存される
+2. 数秒以内に自動的にバックエンドのLambda関数が起動し、UTF-8変換と数式除去を実行
+3. `AthenaDataBucket` にクリーンなデータが保存される
+4. Tableau（またはAWS CLI/コンソール上のAthena）からクエリ可能になる
+
+という非同期処理が行われます。
 
 ## 開発者向けドキュメント
 
@@ -27,7 +54,7 @@
 #### 事前準備
 
 1. [uv](https://github.com/astral-sh/uv) のインストール
-2. AWS CLI の設定および認証 (AWS アクセスポータル等から取得した一時クレデンシャルを環境変数に設定、または `aws configure` でプロファイルを設定済みであること)
+2. AWS CLI の設定および認証 (AWS アクセスポータル等から取得した一時クレデンシャル (`auth.sh`等) を使用)
 
 #### デプロイコマンド
 
@@ -39,28 +66,58 @@ cd backend
 # 依存関係のインストール（自動で仮想環境 .venv も構築されます）
 uv sync
 
-# CDK デプロイ（cdk.json内でuv runを利用しているため、手動でactivateする必要はありません）
-cdk deploy
+# CDK デプロイ
+uv run cdk deploy --require-approval never
 ```
 
 ### デプロイ後のフロントエンド更新手順（重要）
 
-`cdk deploy` を実行してバックエンドスタックを新しく作り直した場合（または別環境へデプロイした場合）、Lambdaの関数URLが変わります。
+`cdk deploy` を実行してバックエンドスタックを新しく作り直した場合、Lambdaの関数URLが変わります。
 その際は、以下の手順でフロントエンド側（`index.html`）の接続先URLを手動で更新してください。
 
 1. デプロイ完了後、ターミナルの出力（Outputs）に表示される `BackendStack.UploadApiUrl` の値（例: `https://xxxxxx.lambda-url.ap-northeast-1.on.aws/`）をコピーします。
-2. `index.html` をエディタで開きます。
-3. 410行目付近にある `BACKEND_URL` 定数の値を、コピーした新しいURLに書き換えて保存します。
+2. `index.html` をエディタで開き、`BACKEND_URL` 定数の値をコピーした新しいURLに書き換えて保存します。
 
 ```javascript
     // Backend API URL
     const BACKEND_URL = "https://<新しいURL>.lambda-url.ap-northeast-1.on.aws/";
 ```
 
-### S3 バケットの CORS 設定について（参考）
+### IAM クレデンシャルの取得
 
-CDKスタック側で自動的に以下のCORSルールをS3バケットに付与しています。フロントエンド（ブラウザ、ローカルファイルの`file://`プロトコル含む）から直接S3へ通信するために必須の設定です。
+デプロイ出力（Outputs）には、Tableau等のBIツールから接続するために使用するクレデンシャルが表示されます。
 
-- **AllowedMethods**: `PUT`, `POST`, `GET`, `HEAD`, `DELETE`
-- **AllowedOrigins**: `*`
-- **ExposeHeaders**: `ETag` (マルチパートアップロードの結合処理に必要)
+* `TableauAccessKeyId`
+* `TableauSecretAccessKey`
+
+これらをTableauのAmazon Athenaコネクタなどで指定してください。
+
+### Athena コンソールでの動作確認用クエリ
+
+開発者がAWSマネジメントコンソール上の **Athena クエリエディタ** で直接データをテスト・確認する際は、以下のSQLを参考にしてください。
+
+> [!WARNING]
+> 本テーブルは `branch` (技セ) と `mc` (MC) の **Partition Projection (injected type)** を使用しています。
+> そのため、すべてのクエリの `WHERE` 句で必ず `branch = '...'` および `mc = '...'` を等価条件で指定する必要があります。指定しないクエリは `CONSTRAINT_VIOLATION` のエラーとなります。
+
+```sql
+-- 基本的なデータプレビュー (必須の2つのパーティションキーを指定)
+-- ※ 'omiya', 'omiya-mc' の部分は実際にアップロードしたフォルダ名に合わせて変更してください
+SELECT * 
+FROM "tableau_access_db"."twins_digital_data" 
+WHERE branch = 'omiya' 
+  AND mc = 'omiya-mc'
+LIMIT 50;
+
+-- 測定年などの数値カラムによるフィルタリングと、必要なカラムのみの抽出
+SELECT 
+    "支社コード",
+    "箇所名",
+    "測定年", 
+    "摩耗_平均値"
+FROM "tableau_access_db"."twins_digital_data" 
+WHERE branch = 'omiya'     -- 必須
+  AND mc = 'omiya-mc'      -- 必須
+  AND "測定年" = 2020      -- 任意のフィルタリング
+LIMIT 10;
+```
