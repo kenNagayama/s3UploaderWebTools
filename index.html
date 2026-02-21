@@ -348,26 +348,9 @@
     <h1>Twins デジタルデータ アップロードツール</h1>
     <p class="subtitle">軽技Webから出力したCSVをTableau用にAmazon S3にアップロードするツール</p>
 
-    <!-- Credentials Section -->
-    <div class="form-group" id="envInputGroup">
-      <label for="envFile" style="text-transform: none;">AWS認証情報の設定ファイル(.env) を登録 (ブラウザに保存されます)</label>
-      <input type="file" id="envFile">
-      <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.5rem;">※Windowsで隠しファイル(.env)が見えない場合は、エクスプローラーの「表示」タブから「隠しファイル」にチェックを入れてください</p>
-    </div>
 
-    <div class="credentials-status" id="credentialsStatus">
-      <div class="credentials-text">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-        認証情報が読み込まれました
-      </div>
-      <button class="btn-clear" id="btnClearCredentials">Clear</button>
-    </div>
 
-    <!-- S3 Config Section -->
-    <div class="form-group">
-      <label for="bucketName">S3 バケット名</label>
-      <input type="text" id="bucketName" value="twins-digital-data-test" placeholder="e.g. twins-digital-data">
-    </div>
+
 
     
     <div class="form-group">
@@ -413,21 +396,12 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <script type="module">
-    import { 
-      S3Client, 
-      PutObjectCommand, 
-      CreateMultipartUploadCommand, 
-      UploadPartCommand, 
-      CompleteMultipartUploadCommand 
-    } from 'https://cdn.skypack.dev/@aws-sdk/client-s3@3.350.0';
+    // Backend API URL
+    const BACKEND_URL = "https://ii4opaq3uk5w6ql5vbhp32rvxe0jkkgy.lambda-url.ap-northeast-1.on.aws/";
+
+    let selectedFiles = [];
 
     // DOM Elements
-    const envFile = document.getElementById('envFile');
-    const envInputGroup = document.getElementById('envInputGroup');
-    const credentialsStatus = document.getElementById('credentialsStatus');
-    const btnClearCredentials = document.getElementById('btnClearCredentials');
-    
-    const bucketName = document.getElementById('bucketName');
     const prefix = document.getElementById('prefix');
     const folderInput = document.getElementById('folderInput');
     const fileList = document.getElementById('fileList');
@@ -437,11 +411,7 @@
     const progressBar = document.getElementById('progressBar');
     const progressPercent = document.getElementById('progressPercent');
     const progressText = document.getElementById('progressText');
-    const logArea = document.getElementById('logArea');
     const toastContainer = document.getElementById('toastContainer');
-
-    let awsConfig = null;
-    let selectedFiles = [];
 
     // --- Toast Notification ---
     function showToast(message) {
@@ -462,11 +432,6 @@
         setTimeout(() => toast.remove(), 400); // Wait for transition
       }, 5000);
     }
-
-
-
-
-
 
     const mcData = [
   {
@@ -879,75 +844,7 @@
       logArea.scrollTop = logArea.scrollHeight;
     }
 
-    // --- Credentials Management ---
-    function checkLocalStorage() {
-      const stored = localStorage.getItem('s3_uploader_credentials');
-      if (stored) {
-        try {
-          awsConfig = JSON.parse(stored);
-          envInputGroup.style.display = 'none';
-          credentialsStatus.classList.add('active');
-          validateUploadState();
-        } catch(e) {
-          localStorage.removeItem('s3_uploader_credentials');
-        }
-      }
-    }
 
-    function parseEnvContent(content) {
-      const lines = content.split('\n');
-      const config = {};
-      lines.forEach(line => {
-        const match = line.match(/^\s*([^=]+?)\s*=\s*(.*?)\s*$/);
-        if (match) {
-          config[match[1]] = match[2];
-        }
-      });
-      return config;
-    }
-
-    envFile.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const content = event.target.result;
-        const config = parseEnvContent(content);
-        
-        if (config['AWS_ACCESS_KEY_ID'] && config['AWS_SECRET_ACCESS_KEY']) {
-          awsConfig = {
-            region: config['AWS_REGION'] || 'ap-northeast-1',
-            credentials: {
-              accessKeyId: config['AWS_ACCESS_KEY_ID'],
-              secretAccessKey: config['AWS_SECRET_ACCESS_KEY']
-            }
-          };
-          localStorage.setItem('s3_uploader_credentials', JSON.stringify(awsConfig));
-          
-          envInputGroup.style.display = 'none';
-          credentialsStatus.classList.add('active');
-          log('Credentials successfully loaded and saved manually.', 'success');
-          validateUploadState();
-        } else {
-          alert("Invalid .env file. Missing AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY");
-          envFile.value = '';
-        }
-      };
-      reader.readAsText(file);
-    });
-
-    btnClearCredentials.addEventListener('click', () => {
-      localStorage.removeItem('s3_uploader_credentials');
-      awsConfig = null;
-      credentialsStatus.classList.remove('active');
-      envInputGroup.style.display = 'block';
-      envFile.value = '';
-      validateUploadState();
-      log('Credentials cleared.');
-    });
-
-    // --- File Selection ---
     folderInput.addEventListener('change', (e) => {
       const files = e.target.files;
       selectedFiles = [];
@@ -975,85 +872,91 @@
     });
 
     function validateUploadState() {
-      if (awsConfig && selectedFiles.length > 0 && bucketName.value && prefix.value) {
+      if (selectedFiles.length > 0 && prefix.value) {
         btnUpload.disabled = false;
       } else {
         btnUpload.disabled = true;
       }
     }
 
-    [bucketName, prefix].forEach(el => el.addEventListener('input', validateUploadState));
+    prefix.addEventListener('input', validateUploadState);
 
     // --- Upload Logic ---
     btnUpload.addEventListener('click', async () => {
-      if (!awsConfig || selectedFiles.length === 0) return;
+      if (selectedFiles.length === 0) return;
 
       btnUpload.disabled = true;
       folderInput.disabled = true;
       progressContainer.classList.add('active');
       
-      const s3Client = new S3Client(awsConfig);
-      const bucket = bucketName.value.trim();
       let pre = prefix.value.trim();
       if (pre && !pre.endsWith('/')) pre += '/';
 
       let successCount = 0;
       let errorCount = 0;
 
-      log(`Starting upload of ${selectedFiles.length} files to s3://${bucket}/${pre}`);
+      log(`Starting upload of ${selectedFiles.length} files to s3://${pre}`);
 
       for (let i = 0; i < selectedFiles.length; i++) {
         const file = selectedFiles[i];
         const fileName = file.name;
-        const objectKey = pre + fileName;
 
         log(`Uploading: ${fileName} ...`);
 
         try {
-          const PART_SIZE = 5 * 1024 * 1024; // 5 MB
+          // 1. Get Presigned URLs
+          const urlsRes = await fetch(BACKEND_URL, {
+            method: 'POST',
+            body: JSON.stringify({
+              action: 'getUploadUrls',
+              fileName: fileName,
+              prefix: pre,
+              fileSize: file.size
+            })
+          });
 
-          if (file.size <= PART_SIZE) {
-            // 単一アップロード (5MB以下)
-            await s3Client.send(new PutObjectCommand({
-              Bucket: bucket,
-              Key: objectKey,
-              Body: file
-            }));
-            
+          if (!urlsRes.ok) throw new Error(`Backend Error: ${urlsRes.statusText}`);
+          const urlsData = await urlsRes.json();
+
+          if (urlsData.uploadType === 'single') {
+            // Single Upload
+            const putRes = await fetch(urlsData.url, {
+              method: 'PUT',
+              body: file
+            });
+            if (!putRes.ok) throw new Error(`S3 Put Error: ${putRes.statusText}`);
+
             const overallPercent = ((i + 1) / selectedFiles.length) * 100;
             progressBar.style.width = `${overallPercent}%`;
             progressPercent.textContent = `${Math.round(overallPercent)}%`;
             progressText.textContent = `File ${i+1}/${selectedFiles.length}: ${file.name}`;
-            
           } else {
-            // マルチパートアップロード (> 5MB)
-            const createRes = await s3Client.send(new CreateMultipartUploadCommand({
-              Bucket: bucket,
-              Key: objectKey
-            }));
-            const uploadId = createRes.UploadId;
-            const parts = [];
-            const numParts = Math.ceil(file.size / PART_SIZE);
+            // Multipart Upload
+            const parts = urlsData.parts;
+            const uploadId = urlsData.uploadId;
+            const objectKey = urlsData.objectKey;
+            const completedParts = [];
 
-            for (let partNumber = 1; partNumber <= numParts; partNumber++) {
+            const PART_SIZE = 5 * 1024 * 1024;
+            const numParts = parts.length;
+
+            for (const partInfo of parts) {
+              const partNumber = partInfo.partNumber;
+              const url = partInfo.url;
               const start = (partNumber - 1) * PART_SIZE;
               const end = Math.min(start + PART_SIZE, file.size);
               const blob = file.slice(start, end);
 
-              const partRes = await s3Client.send(new UploadPartCommand({
-                Bucket: bucket,
-                Key: objectKey,
-                PartNumber: partNumber,
-                UploadId: uploadId,
-                Body: blob
-              }));
-
-              parts.push({
-                ETag: partRes.ETag,
-                PartNumber: partNumber
+              const putRes = await fetch(url, {
+                method: 'PUT',
+                body: blob
               });
+              
+              if (!putRes.ok) throw new Error(`S3 UploadPart Error: ${putRes.statusText} at part ${partNumber}`);
+              
+              const eTag = putRes.headers.get("ETag");
+              completedParts.push({ ETag: eTag, PartNumber: partNumber });
 
-              // Update progress for multipart
               const filePercent = partNumber / numParts;
               const overallPercent = ((i + filePercent) / selectedFiles.length) * 100;
               progressBar.style.width = `${overallPercent}%`;
@@ -1061,12 +964,17 @@
               progressText.textContent = `File ${i+1}/${selectedFiles.length}: ${file.name} (Part ${partNumber}/${numParts})`;
             }
 
-            await s3Client.send(new CompleteMultipartUploadCommand({
-              Bucket: bucket,
-              Key: objectKey,
-              UploadId: uploadId,
-              MultipartUpload: { Parts: parts }
-            }));
+            // Complete Multipart
+            const completeRes = await fetch(BACKEND_URL, {
+              method: 'POST',
+              body: JSON.stringify({
+                action: 'completeUpload',
+                uploadId: uploadId,
+                objectKey: objectKey,
+                parts: completedParts
+              })
+            });
+            if (!completeRes.ok) throw new Error(`Backend Complete Error: ${completeRes.statusText}`);
           }
 
           successCount++;
@@ -1089,9 +997,6 @@
         showToast(`アップロードが完了しました (${successCount} 件)`);
       }
     });
-
-    // Initialize
-    checkLocalStorage();
   </script>
 </body>
 </html>
