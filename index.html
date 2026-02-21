@@ -395,7 +395,7 @@
 
   <div class="toast-container" id="toastContainer"></div>
 
-  <script type="module">
+  <script>
     // Backend API URL
     const BACKEND_URL = "https://ii4opaq3uk5w6ql5vbhp32rvxe0jkkgy.lambda-url.ap-northeast-1.on.aws/";
 
@@ -889,7 +889,7 @@
       folderInput.disabled = true;
       progressContainer.classList.add('active');
       
-      let pre = prefix.value.trim();
+      let pre = prefix.value.trim().replace(/[\\¥]/g, '/');
       if (pre && !pre.endsWith('/')) pre += '/';
 
       let successCount = 0;
