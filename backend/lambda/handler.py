@@ -29,6 +29,10 @@ def handler(event, context):
             return handle_get_upload_urls(body)
         elif action == "completeUpload":
             return handle_complete_upload(body)
+        elif action == "listObjects":
+            return handle_list_objects(body)
+        elif action == "deleteObject":
+            return handle_delete_object(body)
         else:
             return response(400, f"Unsupported action: {action}")
 
@@ -140,6 +144,50 @@ def handle_complete_upload(body):
     return response(
         200, {"message": "Upload completed successfully", "key": object_key}
     )
+
+
+def handle_list_objects(body):
+    prefix = body.get("prefix", "")
+    
+    try:
+        res = s3_client.list_objects_v2(
+            Bucket=BUCKET_NAME,
+            Prefix=prefix
+        )
+        
+        objects = []
+        if "Contents" in res:
+            for obj in res["Contents"]:
+                # フォルダ自体（末尾が / のキー）は除外する
+                if not obj["Key"].endswith("/"):
+                    objects.append({
+                        "key": obj["Key"],
+                        "size": obj["Size"],
+                        "lastModified": obj["LastModified"].isoformat()
+                    })
+                    
+        return response(200, {"objects": objects})
+    except Exception as e:
+        print(f"Error listing objects: {e}")
+        return response(500, "Failed to list objects")
+
+
+def handle_delete_object(body):
+    object_key = body.get("objectKey")
+    
+    if not object_key:
+        return response(400, "Missing objectKey")
+        
+    try:
+        # DeleteObjectは、バージョニングが有効な場合、論理削除（削除マーカー付与）として機能します
+        s3_client.delete_object(
+            Bucket=BUCKET_NAME,
+            Key=object_key
+        )
+        return response(200, {"message": "Object deleted successfully (or marked as deleted)", "key": object_key})
+    except Exception as e:
+        print(f"Error deleting object: {e}")
+        return response(500, "Failed to delete object")
 
 
 def response(status_code, body):

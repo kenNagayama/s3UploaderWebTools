@@ -23,6 +23,13 @@ class BackendStack(Stack):
             "DataUploadBucket",
             removal_policy=RemovalPolicy.DESTROY,
             auto_delete_objects=True,
+            versioned=True,
+            lifecycle_rules=[
+                s3.LifecycleRule(
+                    noncurrent_version_expiration=Duration.days(30),
+                    abort_incomplete_multipart_upload_after=Duration.days(7)
+                )
+            ],
             cors=[
                 s3.CorsRule(
                     allowed_methods=[
@@ -48,6 +55,13 @@ class BackendStack(Stack):
             "AthenaDataBucket",
             removal_policy=RemovalPolicy.DESTROY,
             auto_delete_objects=True,
+            versioned=True,
+            lifecycle_rules=[
+                s3.LifecycleRule(
+                    noncurrent_version_expiration=Duration.days(30),
+                    abort_incomplete_multipart_upload_after=Duration.days(7)
+                )
+            ],
         )
 
         # 3. Create Lambda handling presigned URLs
@@ -62,6 +76,7 @@ class BackendStack(Stack):
 
         bucket.grant_put(handler)
         bucket.grant_read(handler)
+        bucket.grant_delete(handler)
 
         fn_url = handler.add_function_url(
             auth_type=lambda_.FunctionUrlAuthType.NONE,
