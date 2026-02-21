@@ -350,7 +350,7 @@
 
     <!-- Credentials Section -->
     <div class="form-group" id="envInputGroup">
-      <label for="envFile">設定ファイル(.env) を登録 (ブラウザに保存されます)</label>
+      <label for="envFile" style="text-transform: none;">設定ファイル(.env) を登録 (ブラウザに保存されます)</label>
       <input type="file" id="envFile">
       <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.5rem;">※Windowsで隠しファイル(.env)が見えない場合は、エクスプローラーの「表示」タブから「隠しファイル」にチェックを入れてください</p>
     </div>
@@ -383,7 +383,7 @@
 
     <!-- File Selection Section -->
     <div class="form-group">
-      <label for="folderInput">アップロード対象フォルダを選択 (デフォルト: digital-data)</label>
+      <label for="folderInput">アップロードするデータを保存したフォルダを選択 (CSVファイルのみアップされます)</label>
       <input type="file" id="folderInput" webkitdirectory directory multiple>
       <div class="file-list" id="fileList"></div>
     </div>
