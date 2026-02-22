@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useEffect } from 'react';
+import ReactECharts from 'echarts-for-react';
 
 interface HeatmapProps {
   data: any[];
@@ -9,108 +10,214 @@ interface HeatmapProps {
 }
 
 export default function Heatmap({ data, onPoleSelect, selectedPole }: HeatmapProps) {
-  // Use useMemo to process data efficiently for the heatmap
-  const processedData = useMemo(() => {
-    if (!data || data.length === 0) return [];
+  const chartRef = useRef<any>(null);
 
-    // Map the unpivoted CSV data: Record<PoleNumber, Record<HangerPosition, Record<Date, {wear, normalDia}>>>
-    const poleMap: Record<string, Record<string, Record<string, any>>> = {};
-    const datesSet = new Set<string>();
+  const processedData = useMemo(() => {
+    if (!data || data.length === 0) return null;
+
+    const poleSet = new Set<string>();
+    const hangers = Array.from({ length: 14 }, (_, i) => `${14 - i}H`); // Reverse for Y-axis (1H at top)
+    const scatterData: any[] = [];
+
+    // Helper to determine color based on wear percentage
+    const getColor = (wear: number, normalDia: number) => {
+      if (!normalDia) return '#e2e8f0'; // Default gray
+      const ratio = wear / normalDia;
+      // Map ratio 0.6...1.0 to Hue 0(Red)...220(Blue)
+      const clampedRatio = Math.max(0.6, Math.min(1.0, ratio));
+      const hue = ((clampedRatio - 0.6) / 0.4) * 220;
+      return `hsl(${hue}, 80%, 50%)`;
+    };
 
     data.forEach(row => {
       const poleNumber = String(row['電柱番号']);
-      const hangerPos = String(row['ハンガ位置']);
+      const hangerPosStr = `${row['ハンガ位置']}H`;
       const wear = parseFloat(row['摩耗_最小値']);
       const normalDia = parseFloat(row['新品時直径']);
-      const date = row['測定年月日'];
+      const dateStr = String(row['測定年月日']);
 
-      if (!row['電柱番号'] || !row['ハンガ位置'] || isNaN(wear) || !date) return;
+      if (!poleNumber || !hangerPosStr || isNaN(wear) || !dateStr || dateStr === 'undefined') return;
 
-      datesSet.add(date);
+      poleSet.add(poleNumber);
+      
+      // Parse YYYYMMDD to time (timestamp)
+      const year = dateStr.substring(0, 4);
+      const month = dateStr.substring(4, 6);
+      const day = dateStr.substring(6, 8);
+      const timestamp = new Date(`${year}-${month}-${day}T00:00:00Z`).getTime();
 
-      if (!poleMap[poleNumber]) poleMap[poleNumber] = {};
-      if (!poleMap[poleNumber][hangerPos]) poleMap[poleNumber][hangerPos] = {};
-      poleMap[poleNumber][hangerPos][date] = { wear, normalDia };
+      scatterData.push({
+        value: [
+          timestamp,      // X: Time
+          poleNumber,     // Y: Category (Pole)
+          hangerPosStr,     // extra data for tooltip/y-axis logic
+          wear,           // extra data
+          normalDia       // extra data
+        ],
+        itemStyle: {
+          color: getColor(wear, normalDia)
+        }
+      });
     });
 
-    return { poleMap, dates: Array.from(datesSet).filter(Boolean).sort() };
+    const poleNumbers = Array.from(poleSet).sort((a, b) => {
+      const numA = parseInt(a, 10);
+      const numB = parseInt(b, 10);
+      return (!isNaN(numA) && !isNaN(numB)) ? numA - numB : a.localeCompare(b);
+    }).reverse(); // Reverse for Y axis (smallest at top)
+
+    // Generate Cartesian Y-Axis categories matching Pole + Hanger
+    // For each pole, we'll have 14 categories "Pole - 1H", "Pole - 2H" etc.
+    const yCategories: string[] = [];
+    poleNumbers.forEach(pole => {
+      hangers.forEach(h => {
+        yCategories.push(`${pole} - ${h}`);
+      });
+    });
+
+    // Map the scatter data Y values to the exact combined category
+    const mappedScatterData = scatterData.map(item => {
+        const pole = item.value[1];
+        const hanger = item.value[2];
+        return {
+            ...item,
+            value: [
+                item.value[0],
+                `${pole} - ${hanger}`,
+                ...item.value.slice(2)
+            ]
+        };
+    });
+
+    return { yCategories, scatterData: mappedScatterData, poleNumbers };
   }, [data]);
 
-  if (!('dates' in processedData) || processedData.dates.length === 0) {
-    return <div className="text-sm text-slate-500">データがありません</div>;
+  useEffect(() => {
+    const echartInstance = chartRef.current?.getEchartsInstance();
+    if (echartInstance) {
+      echartInstance.on('click', (params: any) => {
+        if (params.value && params.value[1]) {
+           const poleCategory = params.value[1];
+           const pole = poleCategory.split(' - ')[0];
+           onPoleSelect(pole);
+        }
+      });
+    }
+    return () => {
+      if (echartInstance) {
+         echartInstance.off('click');
+      }
+    };
+  }, [onPoleSelect, processedData]);
+
+  if (!processedData || processedData.yCategories.length === 0) {
+    return <div className="text-sm text-slate-500 flex h-full items-center justify-center">データがありません</div>;
   }
 
-  const { poleMap, dates } = processedData as { poleMap: Record<string, Record<string, Record<string, any>>>; dates: string[] };
-  // Sort poles. If they are numeric, sort as numbers, else string sort
-  const poleNumbers = Object.keys(poleMap).sort((a, b) => {
-    const numA = parseInt(a, 10);
-    const numB = parseInt(b, 10);
-    if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
-    return a.localeCompare(b);
-  });
-  const hangers = Array.from({ length: 14 }, (_, i) => (i + 1).toString());
+  const { yCategories, scatterData } = processedData;
 
-  // Helper to determine color based on wear percentage
-  const getColor = (wear: number, normalDia: number) => {
-    if (!normalDia) return '#e2e8f0'; // Default gray
-    const ratio = wear / normalDia;
-    
-    // Map ratio 0.6...1.0 to Hue 0(Red)...220(Blue)
-    const clampedRatio = Math.max(0.6, Math.min(1.0, ratio));
-    const hue = ((clampedRatio - 0.6) / 0.4) * 220; 
-    
-    return `hsl(${hue}, 80%, 50%)`;
-  };
+  const getOptions = () => ({
+    grid: {
+      left: 100, // accommodate labels
+      right: 30,
+      top: 10,
+      bottom: 60
+    },
+    tooltip: {
+      formatter: (params: any) => {
+        const date = new Date(params.value[0]);
+        const dateStr = `${date.getUTCFullYear()}/${String(date.getUTCMonth()+1).padStart(2,'0')}/${String(date.getUTCDate()).padStart(2,'0')}`;
+        const poleHanger = params.value[1];
+        const wear = params.value[3];
+        const normal = params.value[4];
+        return `
+            <strong>${poleHanger}</strong><br/>
+            日付: ${dateStr}<br/>
+            摩耗_最小値: ${wear} mm<br/>
+            新品時直径: ${normal} mm
+        `;
+      }
+    },
+    xAxis: {
+      type: 'time',
+      boundaryGap: false,
+      splitLine: { show: true, lineStyle: { color: '#e2e8f0' } },
+      axisLine: { show: true },
+      axisLabel: { 
+          formatter: '{yyyy}/{MM}',
+          hideOverlap: true
+      }
+    },
+    yAxis: {
+      type: 'category',
+      data: yCategories,
+      axisLabel: {
+        interval: 0,
+        fontSize: 10,
+        formatter: (value: string) => {
+           // Highlight selected pole label
+           const pole = value.split(' - ')[0];
+           return selectedPole === pole ? `{active|${value}}` : `{normal|${value}}`;
+        },
+        rich: {
+            active: { color: '#2563eb', fontWeight: 'bold' },
+            normal: { color: '#64748b' }
+        }
+      },
+      splitArea: {
+          show: true,
+          areaStyle: { color: ['rgba(250,250,250,0.3)','rgba(200,200,200,0.1)'] }
+      }
+    },
+    dataZoom: [
+      {
+        type: 'slider',
+        show: true,
+        xAxisIndex: [0],
+        bottom: 10,
+        height: 20
+      },
+      {
+        type: 'slider',
+        show: true,
+        yAxisIndex: [0],
+        right: 0,
+        width: 20,
+        startValue: Math.max(0, yCategories.length - 42), // Show about 3 poles (42 rows) by default to prevent text squishing
+        endValue: yCategories.length - 1
+      },
+      { 
+        type: 'inside', 
+        yAxisIndex: [0],
+        zoomOnMouseWheel: false,
+        moveOnMouseWheel: true
+      },
+      {
+        type: 'inside',
+        xAxisIndex: [0],
+        zoomOnMouseWheel: false,
+        moveOnMouseWheel: true
+      }
+    ],
+    series: [
+      {
+        type: 'scatter',
+        symbol: 'roundRect',
+        symbolSize: [12, 10], // width, height of the '■'
+        data: scatterData,
+        animation: false
+      }
+    ]
+  });
 
   return (
-    <div className="overflow-auto border rounded bg-white h-full">
-      <table className="min-w-full text-xs text-center border-collapse">
-        <thead className="sticky top-0 bg-slate-100 shadow-sm z-30">
-          <tr>
-            <th className="border p-1 bg-slate-200 min-w-16 sticky left-0 z-40">電柱番号</th>
-            <th className="border p-1 bg-slate-200 min-w-12 sticky left-16 z-40">位置</th>
-            {dates.map(d => (
-              <th key={d} className="border p-1 min-w-16 font-normal whitespace-nowrap">{d}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {poleNumbers.map(pole => (
-             hangers.map((h, index) => (
-                <tr 
-                  key={`${pole}-${h}`} 
-                  className={`hover:bg-slate-50 cursor-pointer ${selectedPole === pole ? 'bg-blue-50' : ''}`}
-                  onClick={() => onPoleSelect(pole)}
-                >
-                  {index === 0 && (
-                    <td 
-                      rowSpan={14} 
-                      className={`border p-1 font-semibold sticky left-0 z-20 text-left px-2 align-top ${selectedPole === pole ? 'bg-blue-100 ring-inset ring-2 ring-blue-500' : 'bg-slate-50'}`}
-                    >
-                      {pole}
-                    </td>
-                  )}
-                  <td className={`border p-1 sticky left-16 z-20 text-center text-[10px] ${selectedPole === pole ? 'bg-blue-50' : 'bg-white'}`}>
-                    {h}H
-                  </td>
-                  {dates.map(d => {
-                    const cellData = poleMap[pole]?.[h]?.[d];
-                    const bg = cellData ? getColor(cellData.wear, cellData.normalDia) : '#f8fafc';
-                    return (
-                      <td 
-                        key={d} 
-                        className="border p-0 transition-colors duration-200 min-w-12 h-6"
-                        style={{ backgroundColor: bg }}
-                        title={cellData ? `摩耗: ${cellData.wear}mm (新品: ${cellData.normalDia}mm)` : 'データなし'}
-                      >
-                      </td>
-                    );
-                  })}
-                </tr>
-             ))
-          ))}
-        </tbody>
-      </table>
+    <div className="w-full h-full min-h-[500px] border rounded bg-white relative">
+      <ReactECharts 
+        ref={chartRef}
+        option={getOptions()} 
+        style={{ height: '100%', width: '100%' }} 
+        notMerge={true}
+      />
     </div>
   );
 }
