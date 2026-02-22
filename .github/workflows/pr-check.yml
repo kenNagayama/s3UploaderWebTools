@@ -46,7 +46,7 @@ jobs:
         run: uv sync
 
       - name: Run CDK Diff
-        run: npx cdk diff --no-color > ../cdk-diff.log 2>&1 || true
+        run: uv run npx cdk diff --no-color > ../cdk-diff.log 2>&1 || true
 
       - name: Comment PR
         uses: actions/github-script@v7

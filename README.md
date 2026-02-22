@@ -61,7 +61,7 @@ GitHub Actionsを利用したCI/CDパイプラインが構築されているた�
 リポジトリを新規作成またはクローンした場合、以下の設定を行ってください：
 
 - **main ブランチの保護**:
-  管理者による直接 Push を防ぐため、リポジトリ直下の `github-main-ruleset.json` を GitHub の **Settings > Rules > Rulesets** からインポートし、有効化 (active) してください。
+  管理者による直接 Push を防ぐため、GitHub の **Settings > Rules > Rulesets** から手動でブランチ保護（Ruleset）を作成し、Target branches に `main` を指定して、1名以上のレビューを必須とするよう有効化 (active) してください。
 - **GitHub Actions の PR 作成許可**:
   自動 PR 機能を有効化するため、GitHub の **Settings > Actions > General > Workflow permissions** で "Allow GitHub Actions to create and approve pull requests" をオンにしてください。
 
@@ -72,13 +72,15 @@ GitHub Actions から AWS へのアクセスには IAM OIDC を使用します�
 cd backend
 
 # 依存関係のインストール（自動で仮想環境 .venv も構築されます）
+# ※ 変更がなければ実行不要
 uv sync
 
 # CDK デプロイ
-npx cdk deploy --require-approval never
+uv run cdk deploy --require-approval never
 ```
 
 デプロイ完了後、ターミナルの outputs (Outputs セクション) に `BackendStack.GitHubActionsRoleArn` として IAM ロールの ARN が出力されます。
+確認し忘れた場合は、 AWS コンソールから CloudFormation のスタック詳細画面から確認できます。
 これを GitHub Actions の設定に登録してください：
 
 1. GitHub リポジトリの **Settings > Secrets and variables > Actions** を開く。
@@ -90,7 +92,7 @@ npx cdk deploy --require-approval never
 
 ### デプロイ後のフロントエンド更新手順（重要）
 
-`cdk deploy` を実行してバックエンドスタックを新しく作り直した場合、Lambdaの関数URLが変わります。
+`cdk deploy` を実行してバックエンドスタックを新しく作り直した場合、Lambdaの関数URLが変わります。（現在は、電気SIOの環境にデプロイしたURLをフロントエンドにハードコードしています。）
 その際は、以下の手順でフロントエンド側（`index.html`）の接続先URLを手動で更新してください。
 
 1. デプロイ完了後、ターミナルの出力（Outputs）に表示される `BackendStack.UploadApiUrl` の値（例: `https://xxxxxx.lambda-url.ap-northeast-1.on.aws/`）をコピーします。
