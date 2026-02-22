@@ -61,7 +61,7 @@ GitHub Actionsを利用したCI/CDパイプラインが構築されているた�
 リポジトリを新規作成またはクローンした場合、以下の設定を行ってください：
 
 - **main ブランチの保護**:
-  管理者による直接 Push を防ぐため、リポジトリ直下の `github-main-ruleset.json` を GitHub の **Settings > Rules > Rulesets** からインポートし、有効化 (active) してください。
+  管理者による直接 Push を防ぐため、GitHub の **Settings > Rules > Rulesets** から手動でブランチ保護（Ruleset）を作成し、Target branches に `main` を指定して、1名以上のレビューを必須とするよう有効化 (active) してください。
 - **GitHub Actions の PR 作成許可**:
   自動 PR 機能を有効化するため、GitHub の **Settings > Actions > General > Workflow permissions** で "Allow GitHub Actions to create and approve pull requests" をオンにしてください。
 
