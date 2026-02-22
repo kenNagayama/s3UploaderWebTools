@@ -1,5 +1,5 @@
 {
-  "app": "uv run python app.py",
+  "app": "npx ts-node --prefer-ts-exts bin/infra.ts",
   "watch": {
     "include": [
       "**"
@@ -7,11 +7,13 @@
     "exclude": [
       "README.md",
       "cdk*.json",
-      "requirements*.txt",
-      "source.bat",
-      "**/__init__.py",
-      "**/__pycache__",
-      "tests"
+      "**/*.d.ts",
+      "**/*.js",
+      "tsconfig.json",
+      "package*.json",
+      "yarn.lock",
+      "node_modules",
+      "test"
     ]
   },
   "context": {
