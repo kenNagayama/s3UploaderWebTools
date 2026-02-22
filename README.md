@@ -75,7 +75,7 @@ cd backend
 uv sync
 
 # CDK デプロイ
-npx cdk deploy --require-approval never
+uv run cdk deploy --require-approval never
 ```
 
 デプロイ完了後、ターミナルの outputs (Outputs セクション) に `BackendStack.GitHubActionsRoleArn` として IAM ロールの ARN が出力されます。
