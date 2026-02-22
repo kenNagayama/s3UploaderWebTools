@@ -1,0 +1,39 @@
+name: Auto PR stg to main
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - stg
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  create-pr-to-main:
+    # PRがマージされた かつ 'merge-to-main' ラベルが付与されている場合のみ実行
+    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'merge-to-main')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create PR from stg to main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 既に stg -> main の PR が存在するかチェック
+          PR_EXISTS=$(gh pr list --base main --head stg --state open --json number --jq 'length')
+          
+          if [ "$PR_EXISTS" -eq 0 ]; then
+            echo "Creating PR from stg to main..."
+            gh pr create \
+              --base main \
+              --head stg \
+              --title "Release: Update main from stg" \
+              --body "This PR was automatically generated upon merging a PR to \`stg\` with the \`merge-to-main\` label."
+          else
+            echo "A PR from stg to main already exists. Skipping."
+          fi
