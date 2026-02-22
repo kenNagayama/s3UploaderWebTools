@@ -72,6 +72,7 @@ GitHub Actions から AWS へのアクセスには IAM OIDC を使用します�
 cd backend
 
 # 依存関係のインストール（自動で仮想環境 .venv も構築されます）
+# ※ 変更がなければ実行不要
 uv sync
 
 # CDK デプロイ
@@ -79,6 +80,7 @@ uv run cdk deploy --require-approval never
 ```
 
 デプロイ完了後、ターミナルの outputs (Outputs セクション) に `BackendStack.GitHubActionsRoleArn` として IAM ロールの ARN が出力されます。
+確認し忘れた場合は、 AWS コンソールから CloudFormation のスタック詳細画面から確認できます。
 これを GitHub Actions の設定に登録してください：
 
 1. GitHub リポジトリの **Settings > Secrets and variables > Actions** を開く。
@@ -90,7 +92,7 @@ uv run cdk deploy --require-approval never
 
 ### デプロイ後のフロントエンド更新手順（重要）
 
-`cdk deploy` を実行してバックエンドスタックを新しく作り直した場合、Lambdaの関数URLが変わります。
+`cdk deploy` を実行してバックエンドスタックを新しく作り直した場合、Lambdaの関数URLが変わります。（現在は、電気SIOの環境にデプロイしたURLをフロントエンドにハードコードしています。）
 その際は、以下の手順でフロントエンド側（`index.html`）の接続先URLを手動で更新してください。
 
 1. デプロイ完了後、ターミナルの出力（Outputs）に表示される `BackendStack.UploadApiUrl` の値（例: `https://xxxxxx.lambda-url.ap-northeast-1.on.aws/`）をコピーします。
