@@ -17,8 +17,47 @@ class BackendStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
+        # ==========================================
+        # CI/CD: GitHub Actions OIDC Provider & Role
+        # ==========================================
+        # Note: AWSアカウント内に手動等で既に同名のOIDCプロバイダが存在する場合は
+        # デプロイ時に競合エラーとなる可能性があります。
+        github_domain = "token.actions.githubusercontent.com"
+        
+        oidc_provider = iam.OpenIdConnectProvider(
+            self,
+            "GitHubOIDCProvider",
+            url=f"https://{github_domain}",
+            client_ids=["sts.amazonaws.com"],
+        )
+
+        github_role = iam.Role(
+            self,
+            "GitHubActionsDeployRole",
+            role_name="GitHubActionsDeployRole-S3Uploader",
+            assumed_by=iam.OpenIdConnectPrincipal(
+                oidc_provider,
+                conditions={
+                    "StringLike": {
+                        f"{github_domain}:sub": "repo:kenNagayama/s3UploaderWebTools:*"
+                    },
+                    "StringEquals": {
+                        f"{github_domain}:aud": "sts.amazonaws.com"
+                    }
+                }
+            )
+        )
+        github_role.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name("AdministratorAccess")
+        )
+        
+        CfnOutput(self, "GitHubActionsRoleArn", value=github_role.role_arn)
+
+        # ==========================================
         # 1. Create S3 Bucket (Raw Data / Upload Bucket) with CORS
+        # ==========================================
         bucket = s3.Bucket(
+
             self,
             "DataUploadBucket",
             removal_policy=RemovalPolicy.DESTROY,
