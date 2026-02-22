@@ -1,0 +1,48 @@
+name: Deploy CDK
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  cdk-deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install AWS CDK
+        run: npm install -g aws-cdk
+
+      - name: Setup python with uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Configure AWS Credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ap-northeast-1
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run CDK Deploy
+        run: npx cdk deploy --require-approval never
