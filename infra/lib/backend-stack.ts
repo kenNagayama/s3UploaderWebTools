@@ -251,8 +251,9 @@ export class BackendStack extends cdk.Stack {
         SOURCE_BUCKET: uploadBucket.bucketName,
         DEST_BUCKET: athenaDataBucket.bucketName
       },
-      memorySize: 1024,
-      timeout: cdk.Duration.minutes(5)
+      memorySize: 4096,
+      timeout: cdk.Duration.minutes(15),
+      ephemeralStorageSize: cdk.Size.mebibytes(2048)
     });
     uploadBucket.grantRead(transformHandler);
     athenaDataBucket.grantPut(transformHandler);
