@@ -109,6 +109,18 @@
       box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
     }
 
+    input[type="text"][readonly] {
+      background: rgba(0, 0, 0, 0.2);
+      color: var(--text-muted);
+      cursor: not-allowed;
+      border-style: dashed;
+    }
+    input[type="text"][readonly]:focus {
+      outline: none;
+      border-color: var(--card-border);
+      box-shadow: none;
+    }
+
     input[type="file"]::file-selector-button {
       display: none; /* Hide default button in modern browsers */
     }
@@ -466,7 +478,7 @@
     </div>
     <div class="form-group">
       <label for="prefix">アップロード先フォルダ</label>
-      <input type="text" id="prefix" value="tableau-access/common/share/" placeholder="e.g. folder/path/">
+      <input type="text" id="prefix" value="tableau-access/common/share/" placeholder="e.g. folder/path/" readonly title="この項目は上の選択肢から自動入力されます。直接編集はできません。">
     </div>
 
     <!-- File Selection Section -->
@@ -967,8 +979,26 @@
           // prefix input event won't trigger automatically when modified programmatically
           // so we trigger the event to update the state.
           document.getElementById('prefix').dispatchEvent(new Event('input'));
+
+          // ローカルストレージに選択を保存し、自動でファイル一覧を取得する
+          localStorage.setItem('selectedMc', e.target.value);
+          btnListObjects.click();
+        } else {
+          localStorage.removeItem('selectedMc');
         }
       });
+
+      // ページ読み込み時にローカルストレージから前回の選択を復元
+      const savedMc = localStorage.getItem('selectedMc');
+      if (savedMc) {
+        // オプションが存在するか確認
+        const optionExists = Array.from(mcSelect.options).some(opt => opt.value === savedMc);
+        if (optionExists) {
+          mcSelect.value = savedMc;
+          // select要素のchangeイベントを発火させてprefix等も連動させる
+          mcSelect.dispatchEvent(new Event('change'));
+        }
+      }
     }
 
 
