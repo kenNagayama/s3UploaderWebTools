@@ -1,0 +1,84 @@
+name: PR Check (CDK Diff)
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  cdk-diff:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install AWS CDK
+        run: npm install -g aws-cdk
+
+      - name: Setup python with uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Configure AWS Credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ap-northeast-1
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run CDK Diff
+        run: npx cdk diff --no-color > ../cdk-diff.log 2>&1 || true
+
+      - name: Comment PR
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            // GitHub Actionsの文字数制限や、エラーによるファイル未生成に対応するため、ファイルを安全に読み込む
+            let diffOutput = "No diff output generated or file not found.";
+            if (fs.existsSync('cdk-diff.log')) {
+              diffOutput = fs.readFileSync('cdk-diff.log', 'utf8');
+              // Output might be too large for a GitHub comment (max 65536 chars limit)
+              // Truncate if necessary (keeping first 60k chars to be safe)
+              if (diffOutput.length > 60000) {
+                diffOutput = diffOutput.substring(0, 60000) + "\n... (Diff output truncated due to size limit)";
+              }
+            }
+            
+            const commentBody = `### 🔍 CDK Diff Output
+            
+            <details>
+            <summary>Click to view diff</summary>
+            
+            \`\`\`text
+            ${diffOutput}
+            \`\`\`
+            </details>
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: commentBody
+            })
