@@ -18,6 +18,14 @@ def clean_excel_formula(val):
         return val[2:-1]
     return val
 
+def get_nominal_diameter(wire_type):
+    wt = wire_type.strip()
+    if wt in ['X', 'Y', 'Z', 'G', 'H', 'I', 'K', 'L', 'M']:
+        return "15.49"
+    elif wt in ['', 'B', 'C', ' ']:
+        return "12.34"
+    return "15.49"
+
 def handler(event, context):
     print(f"Received event: {event}")
     
@@ -48,10 +56,27 @@ def handler(event, context):
             output_io = io.StringIO()
             csv_writer = csv.writer(output_io, quoting=csv.QUOTE_MINIMAL)
             
-            for row in csv_reader:
+            for i, row in enumerate(csv_reader):
+                if i < 3:
+                    # Skip the original 3 header lines
+                    continue
+                
                 # Clean each column
                 cleaned_row = [clean_excel_formula(col) for col in row]
-                csv_writer.writerow(cleaned_row)
+                
+                if len(cleaned_row) < 83:
+                    continue
+                    
+                wire_type = cleaned_row[22]
+                nominal_dia = get_nominal_diameter(wire_type)
+                
+                base_info_1 = cleaned_row[0:33]
+                base_info_2 = cleaned_row[47:83]
+                
+                for hanger_pos in range(1, 15):
+                    wear_val = cleaned_row[33 + hanger_pos - 1]
+                    unpivoted_row = base_info_1 + base_info_2 + [str(hanger_pos), wear_val, nominal_dia]
+                    csv_writer.writerow(unpivoted_row)
             
             # 3. Upload to destination bucket
             cleaned_csv_content = output_io.getvalue().encode('utf-8')

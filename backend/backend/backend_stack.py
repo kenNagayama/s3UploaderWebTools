@@ -7,6 +7,7 @@ from aws_cdk import (
     aws_glue as glue,
     aws_iam as iam,
     aws_s3_notifications as s3n,
+    aws_apigateway as apigw,
     Duration
 )
 from constructs import Construct
@@ -160,6 +161,14 @@ class BackendStack(Stack):
             "AthenaResultsBucket",
             removal_policy=RemovalPolicy.DESTROY,
             auto_delete_objects=True,
+            cors=[
+                s3.CorsRule(
+                    allowed_methods=[s3.HttpMethods.GET],
+                    allowed_origins=["*"],
+                    allowed_headers=["*"],
+                    max_age=3000,
+                )
+            ]
         )
 
         # 6. Glue Database
@@ -185,7 +194,7 @@ class BackendStack(Stack):
                 name=table_name,
                 table_type="EXTERNAL_TABLE",
                 parameters={
-                    "skip.header.line.count": "3",
+                    "skip.header.line.count": "0",
                     "classification": "csv",
                     "use.null.for.invalid.data": "true"
                 },
@@ -236,20 +245,7 @@ class BackendStack(Stack):
                         glue.CfnTable.ColumnProperty(name="親ドラム番号", type="string"),
                         glue.CfnTable.ColumnProperty(name="子ドラム番号", type="string"),
                         glue.CfnTable.ColumnProperty(name="ドラム識別番号", type="string"),
-                        glue.CfnTable.ColumnProperty(name="摩耗_最小値_1", type="double"),
-                        glue.CfnTable.ColumnProperty(name="摩耗_最小値_2", type="double"),
-                        glue.CfnTable.ColumnProperty(name="摩耗_最小値_3", type="double"),
-                        glue.CfnTable.ColumnProperty(name="摩耗_最小値_4", type="double"),
-                        glue.CfnTable.ColumnProperty(name="摩耗_最小値_5", type="double"),
-                        glue.CfnTable.ColumnProperty(name="摩耗_最小値_6", type="double"),
-                        glue.CfnTable.ColumnProperty(name="摩耗_最小値_7", type="double"),
-                        glue.CfnTable.ColumnProperty(name="摩耗_最小値_8", type="double"),
-                        glue.CfnTable.ColumnProperty(name="摩耗_最小値_9", type="double"),
-                        glue.CfnTable.ColumnProperty(name="摩耗_最小値_10", type="double"),
-                        glue.CfnTable.ColumnProperty(name="摩耗_最小値_11", type="double"),
-                        glue.CfnTable.ColumnProperty(name="摩耗_最小値_12", type="double"),
-                        glue.CfnTable.ColumnProperty(name="摩耗_最小値_13", type="double"),
-                        glue.CfnTable.ColumnProperty(name="摩耗_最小値_14", type="double"),
+                        # "摩耗_最小値_1" ~ "14" have been unpivoted
                         glue.CfnTable.ColumnProperty(name="摩耗_管理度数_p0", type="double"),
                         glue.CfnTable.ColumnProperty(name="摩耗_管理度数_p1", type="double"),
                         glue.CfnTable.ColumnProperty(name="摩耗_管理度数_p2", type="double"),
@@ -285,7 +281,10 @@ class BackendStack(Stack):
                         glue.CfnTable.ColumnProperty(name="降雨フラグ", type="string"),
                         glue.CfnTable.ColumnProperty(name="降雨フラグ名", type="string"),
                         glue.CfnTable.ColumnProperty(name="タイムコード_先頭", type="string"),
-                        glue.CfnTable.ColumnProperty(name="歴重ね無効フラグ", type="string")
+                        glue.CfnTable.ColumnProperty(name="歴重ね無効フラグ", type="string"),
+                        glue.CfnTable.ColumnProperty(name="ハンガ位置", type="int"),
+                        glue.CfnTable.ColumnProperty(name="摩耗_最小値", type="double"),
+                        glue.CfnTable.ColumnProperty(name="新品時直径", type="double")
                     ]
                 )
             )
@@ -341,3 +340,60 @@ class BackendStack(Stack):
 
         # Output the Function URL
         CfnOutput(self, "UploadApiUrl", value=fn_url.url)
+
+        # ==========================================
+        # Dashboard API Resources (Next.js Frontend)
+        # ==========================================
+
+        # 9. Dashboard API Lambda
+        dashboard_api_handler = lambda_.Function(
+            self,
+            "DashboardApiHandler",
+            runtime=lambda_.Runtime.PYTHON_3_13,
+            code=lambda_.Code.from_asset("lambda"),
+            handler="dashboard_api_handler.handler",
+            environment={
+                "ATHENA_RESULTS_BUCKET": athena_results_bucket.bucket_name,
+                "DATABASE_NAME": database_name,
+                "TABLE_NAME": table_name
+            },
+            memory_size=512,
+            timeout=Duration.minutes(1)
+        )
+
+        # Grant permissions for Dashboard API
+        athena_data_bucket.grant_read(dashboard_api_handler)
+        athena_results_bucket.grant_read_write(dashboard_api_handler)
+        
+        dashboard_api_handler.add_to_role_policy(iam.PolicyStatement(
+            actions=[
+                "athena:StartQueryExecution",
+                "athena:GetQueryExecution",
+                "athena:GetQueryResults",
+                "glue:GetDatabase",
+                "glue:GetTable",
+                "glue:GetDatabases",
+                "glue:GetTables",
+                "glue:GetPartition",
+                "glue:GetPartitions"
+            ],
+            resources=["*"]
+        ))
+
+        # 10. API Gateway for Dashboard
+        api = apigw.RestApi(
+            self,
+            "DashboardApi",
+            rest_api_name="Dashboard API Service",
+            default_cors_preflight_options=apigw.CorsOptions(
+                allow_origins=apigw.Cors.ALL_ORIGINS,
+                allow_methods=apigw.Cors.ALL_METHODS,
+                allow_headers=apigw.Cors.DEFAULT_HEADERS
+            )
+        )
+
+        dashboard_integration = apigw.LambdaIntegration(dashboard_api_handler)
+        dashboard_resource = api.root.add_resource("dashboard")
+        dashboard_resource.add_method("GET", dashboard_integration)
+        
+        CfnOutput(self, "DashboardApiUrl", value=api.url)
