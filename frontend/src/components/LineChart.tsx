@@ -69,9 +69,26 @@ export default function LineChart({ data, poleNumber }: LineChartProps) {
         }
     }
 
+    // Calculate minimum wear and dynamic Y-axis min
+    const allWearValues = filtered
+        .map(row => parseFloat(row['摩耗_最小値']))
+        .filter(val => !isNaN(val));
+    const minWear = allWearValues.length > 0 ? Math.min(...allWearValues) : 0;
+
+    const p0ValueStr = filtered.find(row => row['摩耗_管理値_p0'] != null)?.[ '摩耗_管理値_p0'];
+    const p0 = p0ValueStr !== undefined ? parseFloat(p0ValueStr) : undefined;
+
+    let yMin = undefined;
+    if (p0 !== undefined && !isNaN(p0)) {
+        yMin = Math.min(minWear, p0) - 0.5;
+    } else {
+        yMin = minWear - 0.5;
+    }
+
     return {
       labels: dates,
-      datasets
+      datasets,
+      yMin
     };
   }, [data, poleNumber]);
 
@@ -99,7 +116,7 @@ export default function LineChart({ data, poleNumber }: LineChartProps) {
       x: { title: { display: true, text: '測定年月日' } },
       y: { 
           title: { display: true, text: '摩耗_最小値 (mm)' },
-          // optional: min/max bounds based on nominal dia can go here
+          min: chartData.yMin
       }
     },
     interaction: {
