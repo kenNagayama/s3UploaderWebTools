@@ -32,12 +32,12 @@ export default function LineChart({ data, poleNumber }: LineChartProps) {
   const chartData = useMemo(() => {
     if (!data || !poleNumber) return null;
 
-    // Filter data for the selected pole
-    const filtered = data.filter(row => row['電柱番号'] === poleNumber);
+    // Filter data for the selected pole (cast to string for safe comparison with PapaParse dynamicTyping)
+    const filtered = data.filter(row => String(row['電柱番号']) === String(poleNumber));
     if (filtered.length === 0) return null;
 
     // Extract unique dates for X-axis
-    const dates = Array.from(new Set(filtered.map(row => row['測定年月日']))).sort();
+    const dates = Array.from(new Set(filtered.map(row => row['測定年月日']))).filter(Boolean).sort();
 
     // Prepare datasets for each hanger position (1H to 14H)
     const datasets = [];
@@ -51,7 +51,7 @@ export default function LineChart({ data, poleNumber }: LineChartProps) {
         
         // Find data points for this hanger across all dates
         const dataPoints = dates.map(date => {
-            const entry = filtered.find(row => row['測定年月日'] === date && row['ハンガ位置']?.toString() === hangerStr);
+            const entry = filtered.find(row => row['測定年月日'] === date && String(row['ハンガ位置']) === hangerStr);
             return entry ? parseFloat(entry['摩耗_最小値']) : null;
         });
 
