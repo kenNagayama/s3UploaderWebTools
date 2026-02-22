@@ -78,7 +78,13 @@ uv sync
 npx cdk deploy --require-approval never
 ```
 
-デプロイ完了後、ターミナルの Outputs に出力される IAM ロールの ARN (`BackendStack.GitHubActionsRoleArn`) をコピーし、GitHub リポジトリの **Settings > Secrets and variables > Actions** に `AWS_OIDC_ROLE_ARN` として登録してください。
+デプロイ完了後、ターミナルの outputs (Outputs セクション) に `BackendStack.GitHubActionsRoleArn` として IAM ロールの ARN が出力されます。
+これを GitHub Actions の設定に登録してください：
+
+1. GitHub リポジトリの **Settings > Secrets and variables > Actions** を開く。
+2. **"New repository secret"** をクリック。
+3. **Name**: `AWS_OIDC_ROLE_ARN`
+4. **Secret**: 先ほどコピーした IAM ロールの ARN を貼り付けて追加する。
 
 以降は、開発ブランチを Push した際に自動で PR が作成され、マージに伴って `cdk deploy` が自動実行されます。
 
