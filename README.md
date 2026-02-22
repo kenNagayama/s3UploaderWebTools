@@ -50,15 +50,23 @@ AWS CDK (Python + `uv`) を用いてインフラストラクチャをコード�
 ### バックエンドのデプロイ手順
 
 バックエンド環境はPythonの高速パッケージマネージャである `uv` と AWS CDK を用いて管理されています。
+GitHub Actionsを利用したCI/CDパイプラインが構築されているため、各環境の初期セットアップを行うことで自動デプロイが可能です。
 
-#### 事前準備
-
+#### 1. 事前準備 (ローカル環境)
 1. [uv](https://github.com/astral-sh/uv) のインストール
-2. AWS CLI の設定および認証 (AWS アクセスポータル等から取得した一時クレデンシャル (`auth.sh`等) を使用)
+2. Node.js および [AWS CDK CLI](https://docs.aws.amazon.com/cdk/v2/guide/cli.html) のインストール (`npm install -g aws-cdk`)
+3. AWS CLI の設定および認証 (AWS アクセスポータル等から取得した一時クレデンシャルを使用)
 
-#### デプロイコマンド
+#### 2. リポジトリの初期設定 (管理者向け)
+リポジトリを新規作成またはクローンした場合、以下の設定を行ってください：
 
-`backend` ディレクトリに移動し、以下のコマンドで依存関係のインストールとデプロイを行います。
+- **main ブランチの保護**:
+  管理者による直接 Push を防ぐため、リポジトリ直下の `github-main-ruleset.json` を GitHub の **Settings > Rules > Rulesets** からインポートし、有効化 (active) してください。
+- **GitHub Actions の PR 作成許可**:
+  自動 PR 機能を有効化するため、GitHub の **Settings > Actions > General > Workflow permissions** で "Allow GitHub Actions to create and approve pull requests" をオンにしてください。
+
+#### 3. AWS OIDC連携の初回手動デプロイ (管理者向け)
+GitHub Actions から AWS へのアクセスには IAM OIDC を使用します。**初回のインフラ構築時のみ**、ローカル環境からデプロイして OIDC プロバイダと IAM ロールを作成する必要があります。
 
 ```bash
 cd backend
@@ -67,8 +75,12 @@ cd backend
 uv sync
 
 # CDK デプロイ
-uv run cdk deploy --require-approval never
+npx cdk deploy --require-approval never
 ```
+
+デプロイ完了後、ターミナルの Outputs に出力される IAM ロールの ARN (`BackendStack.GitHubActionsRoleArn`) をコピーし、GitHub リポジトリの **Settings > Secrets and variables > Actions** に `AWS_OIDC_ROLE_ARN` として登録してください。
+
+以降は、開発ブランチを Push した際に自動で PR が作成され、マージに伴って `cdk deploy` が自動実行されます。
 
 ### デプロイ後のフロントエンド更新手順（重要）
 
