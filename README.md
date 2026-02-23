@@ -98,3 +98,24 @@ CDKを作り直して `UploadApiUrl` が変わった場合のみ、`index.html` 
 ### GitHub Actions (OIDC) の設定
 このプロジェクトはGitHub Actions経由で自動デプロイが可能です。
 `BackendStack` 初回デプロイ時に出力される `BackendStack.GitHubActionsRoleArn` の値を、GitHubリポジトリの Secrets (`AWS_OIDC_ROLE_ARN`) に設定してください。
+
+### Athena コンソールでの動作確認用クエリ
+
+開発者がAWSマネジメントコンソール上の **Athena クエリエディタ** で直接データをテスト・確認する際は、以下のSQLを参考にしてください。Tableau上では全量を抽出（データソース抽出）することが可能です。
+
+```sql
+-- すべてのデータを50行だけプレビューする (Tableauでの全量抽出時のプレビューに相当)
+SELECT * 
+FROM "tableau_access_db"."twins_digital_data" 
+LIMIT 50;
+
+-- 測定年などの数値カラムによるフィルタリングと、必要なカラムのみの抽出
+SELECT 
+    "支社コード",
+    "箇所名",
+    "測定年", 
+    "摩耗_平均値"
+FROM "tableau_access_db"."twins_digital_data" 
+WHERE "測定年" = 2020      -- 任意のフィルタリング
+LIMIT 10;
+```
