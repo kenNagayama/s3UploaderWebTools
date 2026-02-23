@@ -65,11 +65,11 @@ def handler(event, context):
         where_clause = "WHERE " + " AND ".join(conditions)
 
     query = f"""
-        SELECT "測定年月日", "電柱番号", "ハンガ位置", "摩耗_最小値", "新品時直径", "行路名称", "通称線名名称", "駅_駅々間名称"
+        SELECT "no", "測定年月日", "電柱番号", "ハンガ位置", "摩耗_最小値", "新品時直径", "行路名称", "通称線名名称", "駅_駅々間名称"
         FROM {DATABASE}.{TABLE}
         {where_clause}
-        ORDER BY "駅_駅々間名称" ASC, "電柱番号" ASC, "ハンガ位置" ASC, "測定年月日" ASC
-        LIMIT 50000
+        ORDER BY "行路名称" ASC, "通称線名名称" ASC, "電柱番号" ASC, "ハンガ位置" ASC, "測定年月日" ASC
+        LIMIT 500000
     """
         
     try:

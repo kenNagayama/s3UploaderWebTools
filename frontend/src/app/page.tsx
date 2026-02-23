@@ -14,6 +14,8 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [selectedPole, setSelectedPole] = useState<string | null>(null);
   const [initialLoad, setInitialLoad] = useState(true);
+  const [sortType, setSortType] = useState('pole_asc');
+  const [showLimitToast, setShowLimitToast] = useState(false);
 
   // Filter states
   const [location, setLocation] = useState('');
@@ -43,60 +45,13 @@ export default function Dashboard() {
     "東大宮", "東大宮―蓮田", "東鷲宮", "東鷲宮―栗橋", "栗橋", "栗橋―古河"
   ];
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        setLoading(true);
-        // Step 1: Request presigned URL from API Gateway -> Lambda with query params
-        const params = new URLSearchParams();
-        if (location) params.append('location', location);
-        if (lineName) {
-          params.append('line_type', lineType);
-          params.append('line_name', lineName);
-        }
-        if (direction) params.append('direction', direction);
-        if (station) params.append('station', station);
-
-        const res = await fetch(`${API_URL}/dashboard/?${params.toString()}`);
-        if (!res.ok) throw new Error('API request failed');
-        
-        const json = await res.json();
-        const downloadUrl = json.download_url;
-        
-        if (!downloadUrl) throw new Error('No download URL returned');
-
-        // Step 2: Download the CSV from S3 presigned URL
-        const csvRes = await fetch(downloadUrl);
-        const csvText = await csvRes.text();
-
-        // Step 3: Parse CSV data
-        Papa.parse(csvText, {
-          header: true,
-          dynamicTyping: true,
-          skipEmptyLines: true,
-          complete: (results) => {
-            setData(results.data);
-            setLoading(false);
-          },
-          error: (err: Error) => {
-            throw err;
-          }
-        });
-
-      } catch (err: any) {
-        console.error(err);
-        setError(err.message);
-        setLoading(false);
-      }
-    }
-
-    fetchData();
-  }, []); // Run on mount
+  // Removed automatic fetchData on mount. User must manually click search.
 
   const handleSearch = () => {
     setLoading(true);
     setSelectedPole(null);
     setData([]);
+    setShowLimitToast(false);
     // Re-trigger fetch by just calling same logic (extract to function)
     const fetchDataOnClick = async () => {
       try {
@@ -128,6 +83,9 @@ export default function Dashboard() {
             console.log("Papa.parse complete. First 5 rows:", results.data.slice(0, 5));
             console.log("Keys of first row:", Object.keys(results.data[0] || {}));
             setData(results.data);
+            if (results.data.length >= 500000) {
+              setShowLimitToast(true);
+            }
             setInitialLoad(false);
             setLoading(false);
           },
@@ -314,6 +272,19 @@ export default function Dashboard() {
               {stationOptions.map((opt, i) => <option key={i} value={opt}>{opt}</option>)}
             </select>
           </div>
+          <div className="flex flex-col gap-1 w-40">
+            <label className="font-semibold text-slate-700">並び順</label>
+            <select 
+              value={sortType} 
+              onChange={e => setSortType(e.target.value)} 
+              className="border rounded p-2 bg-white"
+            >
+              <option value="pole_asc">電柱番号 (昇順)</option>
+              <option value="pole_desc">電柱番号 (降順)</option>
+              <option value="no_asc">No. (昇順)</option>
+              <option value="no_desc">No. (降順)</option>
+            </select>
+          </div>
           <button 
             onClick={handleSearch} 
             className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded transition-colors h-[38px] flex items-center justify-center"
@@ -329,6 +300,14 @@ export default function Dashboard() {
                 <strong className="font-bold">Error:</strong>
                 <span className="block sm:inline ml-2">{error}</span>
             </div>
+        )}
+
+        {showLimitToast && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-yellow-100 border border-yellow-400 text-yellow-800 px-4 py-3 rounded z-50 shadow-lg flex items-center gap-2">
+            <strong className="font-bold whitespace-nowrap">⚠ 注意:</strong>
+            <span>データサイズが上限(50万件)に達したため、一部データが表示されていません。条件を絞り込んでください。</span>
+            <button onClick={() => setShowLimitToast(false)} className="ml-4 text-yellow-600 hover:text-yellow-800 text-xl font-bold leading-none">&times;</button>
+          </div>
         )}
 
         {initialLoad ? (
@@ -349,6 +328,7 @@ export default function Dashboard() {
                   data={data} 
                   onPoleSelect={(pole: string) => setSelectedPole(pole)} 
                   selectedPole={selectedPole} 
+                  sortType={sortType}
                 />
               </div>
             </section>

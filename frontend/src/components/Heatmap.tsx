@@ -7,15 +7,17 @@ interface HeatmapProps {
   data: any[];
   onPoleSelect: (poleNumber: string) => void;
   selectedPole: string | null;
+  sortType: string;
 }
 
-export default function Heatmap({ data, onPoleSelect, selectedPole }: HeatmapProps) {
+export default function Heatmap({ data, onPoleSelect, selectedPole, sortType }: HeatmapProps) {
   const chartRef = useRef<any>(null);
 
   const processedData = useMemo(() => {
     if (!data || data.length === 0) return null;
 
     const poleSet = new Set<string>();
+    const poleMeta = new Map<string, { route: string, poleNum: number, no: number }>();
     const hangers = Array.from({ length: 14 }, (_, i) => `${14 - i}H`); // Reverse for Y-axis (1H at top)
     const scatterData: any[] = [];
 
@@ -31,9 +33,10 @@ export default function Heatmap({ data, onPoleSelect, selectedPole }: HeatmapPro
 
     data.forEach(row => {
       // Create a globally unique pole name using Station/Section Name (or fallback to Route/Line)
-      const routeName = row['駅_駅々間名称'] || row['行路名称'] || row['通称線名名称'] || '不明';
+      const routeName = row['行路名称'] || row['通称線名名称'] || '不明';
+      const stationName = row['駅_駅々間名称'] || routeName;
       const rawPole = String(row['電柱番号']);
-      const poleNumber = `${routeName} ${rawPole}`;
+      const poleNumber = `${stationName} ${rawPole}`;
       
       const hangerPosStr = `${row['ハンガ位置']}H`;
       const wear = parseFloat(row['摩耗_最小値']);
@@ -42,7 +45,16 @@ export default function Heatmap({ data, onPoleSelect, selectedPole }: HeatmapPro
 
       if (!rawPole || !hangerPosStr || isNaN(wear) || !dateStr || dateStr === 'undefined') return;
 
-      poleSet.add(poleNumber);
+      if (!poleSet.has(poleNumber)) {
+        poleSet.add(poleNumber);
+        const parsedPole = parseInt(rawPole, 10);
+        const noVal = parseInt(row['no'], 10);
+        poleMeta.set(poleNumber, { 
+          route: routeName, 
+          poleNum: isNaN(parsedPole) ? 0 : parsedPole,
+          no: isNaN(noVal) ? 0 : noVal
+        });
+      }
       
       // Parse YYYYMMDD or YYYY-MM-DD
       let year, month, day;
@@ -74,15 +86,23 @@ export default function Heatmap({ data, onPoleSelect, selectedPole }: HeatmapPro
     });
 
     const poleNumbers = Array.from(poleSet).sort((a, b) => {
-      // Sort first by Route Name, then by numeric pole number
-      const partsA = a.split(' ');
-      const partsB = b.split(' ');
-      const numA = parseInt(partsA[partsA.length - 1], 10);
-      const numB = parseInt(partsB[partsB.length - 1], 10);
+      const metaA = poleMeta.get(a)!;
+      const metaB = poleMeta.get(b)!;
+      const isDesc = sortType.endsWith('_desc');
       
-      if (partsA[0] !== partsB[0]) return partsA[0].localeCompare(partsB[0]);
-      return (!isNaN(numA) && !isNaN(numB)) ? numA - numB : a.localeCompare(b);
-    }).reverse(); // Reverse for Y axis (smallest at top)
+      if (sortType.startsWith('no_')) {
+        let diff = metaA.no - metaB.no;
+        if (diff === 0) diff = metaA.poleNum - metaB.poleNum;
+        return isDesc ? -diff : diff;
+      } else {
+        if (metaA.route !== metaB.route) {
+          const routeDiff = metaA.route.localeCompare(metaB.route);
+          return isDesc ? -routeDiff : routeDiff;
+        }
+        const diff = metaA.poleNum - metaB.poleNum;
+        return isDesc ? -diff : diff;
+      }
+    }).reverse(); // Reverse for Y axis (ECharts plots from bottom to top)
 
     // Generate Cartesian Y-Axis categories matching Route + Pole + Hanger
     const yCategories: string[] = [];
