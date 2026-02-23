@@ -32,12 +32,26 @@ export default function LineChart({ data, poleNumber }: LineChartProps) {
   const chartData = useMemo(() => {
     if (!data || !poleNumber) return null;
 
-    // Filter data for the selected pole (cast to string for safe comparison with PapaParse dynamicTyping)
-    const filtered = data.filter(row => String(row['電柱番号']) === String(poleNumber));
+    // Filter data for the selected pole by reconstructing the unique pole name
+    const filtered = data.filter(row => {
+      const routeName = row['駅_駅々間名称'] || row['行路名称'] || row['通称線名名称'] || '不明';
+      const rowPole = `${routeName} ${String(row['電柱番号'])}`;
+      return rowPole === String(poleNumber);
+    });
     if (filtered.length === 0) return null;
 
-    // Extract unique dates for X-axis
-    const dates = Array.from(new Set(filtered.map(row => row['測定年月日']))).filter(Boolean).sort();
+    // Extract unique dates for X-axis and format them nicely
+    const rawDates = Array.from(new Set(filtered.map(row => String(row['測定年月日'])))).filter(Boolean).sort();
+    
+    // Sort raw strings, but for display we want nicely formatted dates
+    const dates = rawDates; // Keep raw for matching `filtered.find`
+    const displayDates = dates.map(d => {
+        const clean = d.replace(/[-/]/g, '');
+        if (clean.length === 8) {
+            return `${clean.substring(0,4)}/${clean.substring(4,6)}/${clean.substring(6,8)}`;
+        }
+        return d;
+    });
 
     // Prepare datasets for each hanger position (1H to 14H)
     const datasets = [];
@@ -51,7 +65,7 @@ export default function LineChart({ data, poleNumber }: LineChartProps) {
         
         // Find data points for this hanger across all dates
         const dataPoints = dates.map(date => {
-            const entry = filtered.find(row => row['測定年月日'] === date && String(row['ハンガ位置']) === hangerStr);
+            const entry = filtered.find(row => String(row['測定年月日']) === date && String(row['ハンガ位置']) === hangerStr);
             return entry ? parseFloat(entry['摩耗_最小値']) : null;
         });
 
@@ -86,7 +100,7 @@ export default function LineChart({ data, poleNumber }: LineChartProps) {
     }
 
     return {
-      labels: dates,
+      labels: displayDates,
       datasets,
       yMin
     };

@@ -30,21 +30,34 @@ export default function Heatmap({ data, onPoleSelect, selectedPole }: HeatmapPro
     };
 
     data.forEach(row => {
-      const poleNumber = String(row['電柱番号']);
+      // Create a globally unique pole name using Station/Section Name (or fallback to Route/Line)
+      const routeName = row['駅_駅々間名称'] || row['行路名称'] || row['通称線名名称'] || '不明';
+      const rawPole = String(row['電柱番号']);
+      const poleNumber = `${routeName} ${rawPole}`;
+      
       const hangerPosStr = `${row['ハンガ位置']}H`;
       const wear = parseFloat(row['摩耗_最小値']);
       const normalDia = parseFloat(row['新品時直径']);
       const dateStr = String(row['測定年月日']);
 
-      if (!poleNumber || !hangerPosStr || isNaN(wear) || !dateStr || dateStr === 'undefined') return;
+      if (!rawPole || !hangerPosStr || isNaN(wear) || !dateStr || dateStr === 'undefined') return;
 
       poleSet.add(poleNumber);
       
-      // Parse YYYYMMDD to time (timestamp)
-      const year = dateStr.substring(0, 4);
-      const month = dateStr.substring(4, 6);
-      const day = dateStr.substring(6, 8);
+      // Parse YYYYMMDD or YYYY-MM-DD
+      let year, month, day;
+      const cleanDate = dateStr.replace(/[-/]/g, '');
+      if (cleanDate.length === 8) {
+        year = cleanDate.substring(0, 4);
+        month = cleanDate.substring(4, 6);
+        day = cleanDate.substring(6, 8);
+      } else {
+        // Fallback for unexpected formats
+        year = '2000'; month = '01'; day = '01';
+      }
+      
       const timestamp = new Date(`${year}-${month}-${day}T00:00:00Z`).getTime();
+      if (isNaN(timestamp)) return; // Skip invalid dates
 
       scatterData.push({
         value: [
@@ -61,13 +74,17 @@ export default function Heatmap({ data, onPoleSelect, selectedPole }: HeatmapPro
     });
 
     const poleNumbers = Array.from(poleSet).sort((a, b) => {
-      const numA = parseInt(a, 10);
-      const numB = parseInt(b, 10);
+      // Sort first by Route Name, then by numeric pole number
+      const partsA = a.split(' ');
+      const partsB = b.split(' ');
+      const numA = parseInt(partsA[partsA.length - 1], 10);
+      const numB = parseInt(partsB[partsB.length - 1], 10);
+      
+      if (partsA[0] !== partsB[0]) return partsA[0].localeCompare(partsB[0]);
       return (!isNaN(numA) && !isNaN(numB)) ? numA - numB : a.localeCompare(b);
     }).reverse(); // Reverse for Y axis (smallest at top)
 
-    // Generate Cartesian Y-Axis categories matching Pole + Hanger
-    // For each pole, we'll have 14 categories "Pole - 1H", "Pole - 2H" etc.
+    // Generate Cartesian Y-Axis categories matching Route + Pole + Hanger
     const yCategories: string[] = [];
     poleNumbers.forEach(pole => {
       hangers.forEach(h => {

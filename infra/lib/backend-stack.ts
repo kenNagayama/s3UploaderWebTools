@@ -13,6 +13,10 @@ interface BackendStackProps extends cdk.StackProps {
 }
 
 export class BackendStack extends cdk.Stack {
+  public readonly dashboardApi: apigw.RestApi;
+  public readonly uploadApiUrl: string;
+  public readonly customHeaderSecret: string;
+
   constructor(scope: Construct, id: string, props?: BackendStackProps) {
     super(scope, id, props);
 
@@ -222,12 +226,18 @@ export class BackendStack extends cdk.Stack {
     // ==========================================
     const lambdaCodePath = path.resolve(__dirname, '../../backend/lambda');
 
+    // 11. Custom header secret for CloudFront origin verification
+    this.customHeaderSecret = 'cf-secret-' + this.account + '-' + this.region; // Simple deterministic secret for MVP
+
     // 3. Create Lambda handling presigned URLs (Existing Uploader logic)
     const presignedUrlHandler = new lambda.Function(this, 'PresignedUrlHandler', {
       runtime: lambda.Runtime.PYTHON_3_13,
       code: lambda.Code.fromAsset(lambdaCodePath),
       handler: 'handler.handler',
-      environment: { BUCKET_NAME: uploadBucket.bucketName },
+      environment: { 
+        BUCKET_NAME: uploadBucket.bucketName,
+        X_ORIGIN_VERIFY: this.customHeaderSecret
+      },
     });
     uploadBucket.grantPut(presignedUrlHandler);
     uploadBucket.grantRead(presignedUrlHandler);
@@ -241,6 +251,7 @@ export class BackendStack extends cdk.Stack {
         allowedHeaders: ['*'],
       }
     });
+    this.uploadApiUrl = fnUrl.url;
 
     // 4. Create Transform Lambda
     const transformHandler = new lambda.Function(this, 'CsvTransformHandler', {
@@ -272,7 +283,8 @@ export class BackendStack extends cdk.Stack {
       environment: {
         ATHENA_RESULTS_BUCKET: athenaResultsBucket.bucketName,
         DATABASE_NAME: databaseName,
-        TABLE_NAME: tableName
+        TABLE_NAME: tableName,
+        X_ORIGIN_VERIFY: this.customHeaderSecret
       },
       memorySize: 512,
       timeout: cdk.Duration.minutes(1)
@@ -297,7 +309,7 @@ export class BackendStack extends cdk.Stack {
     }));
 
     // 10. API Gateway for Dashboard
-    const api = new apigw.RestApi(this, 'DashboardApi', {
+    this.dashboardApi = new apigw.RestApi(this, 'DashboardApi', {
       restApiName: 'Dashboard API Service',
       defaultCorsPreflightOptions: {
         allowOrigins: apigw.Cors.ALL_ORIGINS,
@@ -307,7 +319,8 @@ export class BackendStack extends cdk.Stack {
     });
 
     const dashboardIntegration = new apigw.LambdaIntegration(dashboardApiHandler);
-    const dashboardResource = api.root.addResource('dashboard');
+    const apiResource = this.dashboardApi.root.addResource('api');
+    const dashboardResource = apiResource.addResource('dashboard');
     dashboardResource.addMethod('GET', dashboardIntegration);
 
     // ==========================================
@@ -349,7 +362,11 @@ export class BackendStack extends cdk.Stack {
     // Outputs
     new cdk.CfnOutput(this, 'TableauAccessKeyId', { value: accessKey.ref });
     new cdk.CfnOutput(this, 'TableauSecretAccessKey', { value: accessKey.attrSecretAccessKey });
-    new cdk.CfnOutput(this, 'UploadApiUrl', { value: fnUrl.url });
-    new cdk.CfnOutput(this, 'DashboardApiUrl', { value: api.url });
+    new cdk.CfnOutput(this, 'UploadApiUrl', { value: this.uploadApiUrl });
+    new cdk.CfnOutput(this, 'DashboardApiUrl', { value: this.dashboardApi.url });
+    new cdk.CfnOutput(this, 'OriginVerifySecret', { 
+      value: this.customHeaderSecret,
+      description: 'The secret header value CloudFront must send to access the APIs'
+    });
   }
 }

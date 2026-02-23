@@ -13,31 +13,64 @@ BUCKET = os.environ.get('ATHENA_RESULTS_BUCKET')
 def handler(event, context):
     print(f"Received event: {json.dumps(event)}")
     
+    # 1. Verify custom header from CloudFront
+    headers = event.get('headers') or {}
+    expected_secret = os.environ.get('X_ORIGIN_VERIFY')
+    # headers keys are lowercase in API Gateway proxy integration
+    provided_secret = headers.get('x-origin-verify') or headers.get('X-Origin-Verify')
+    
+    if expected_secret and provided_secret != expected_secret:
+        print(f"Forbidden: expected {expected_secret}, got {provided_secret}")
+        return {
+            'statusCode': 403,
+            'body': json.dumps({'error': 'Forbidden'})
+        }
+    
     # Check if a specific pole number is queried
     query_params = event.get('queryStringParameters') or {}
     pole_number = query_params.get('pole_number')
+    location = query_params.get('location')
+    line_type = query_params.get('line_type')
+    line_name = query_params.get('line_name')
+    direction = query_params.get('direction')
+    station = query_params.get('station')
     
-    # Build Athena query
-    # MVP: Fetch a subset of columns needed for the dashboard to keep response small
-    # For Heatmap, we need all, but maybe just essential fields to reduce size.
+    # Build Athena query with dynamic WHERE clause
+    conditions = []
+    
     if pole_number:
-        # Prevent SQL injection by basic checking or using parameterized queries if supported,
-        # but Athena boto3 start_query_execution doesn't support parameters out of the box easily.
-        # We can just sanitize by replacing single quotes.
-        safe_pole = pole_number.replace("'", "''")
-        query = f"""
-            SELECT "測定年月日", "電柱番号", "ハンガ位置", "摩耗_最小値", "新品時直径"
-            FROM {DATABASE}.{TABLE}
-            WHERE "電柱番号" = '{safe_pole}'
-            ORDER BY "測定年月日" ASC, "ハンガ位置" ASC
-        """
-    else:
-        # Default query for MVP heatmap overview
-        query = f"""
-            SELECT "測定年月日", "電柱番号", "ハンガ位置", "摩耗_最小値", "新品時直径"
-            FROM {DATABASE}.{TABLE}
-            LIMIT 50000
-        """
+        conditions.append(f""""電柱番号" = '{pole_number.replace("'", "''")}'""")
+    if location:
+        # Use exact match to avoid matching other centers (e.g. 大宮電力設備技術センター vs 大宮電力メンテナンスセンター)
+        safe_location = location.replace("'", "''")
+        conditions.append(f""""箇所名" = '{safe_location}'""")
+    if line_name and line_type:
+        safe_line = line_name.replace("'", "''")
+        if line_type == 'route':
+            conditions.append(f""""行路名称" = '{safe_line}'""")
+        elif line_type == 'line':
+            conditions.append(f""""通称線名名称" = '{safe_line}'""")
+    elif line_name:
+        # Fallback if line_type not provided
+        safe_line = line_name.replace("'", "''")
+        conditions.append(f"""("通称線名名称" LIKE '%{safe_line}%' OR "行路名称" LIKE '%{safe_line}%')""")
+    
+    if direction:
+        conditions.append(f""""線別名称" = '{direction.replace("'", "''")}'""")
+    if station:
+        conditions.append(f""""駅_駅々間名称" = '{station.replace("'", "''")}'""")
+        
+    where_clause = ""
+    if conditions:
+        where_clause = "WHERE " + " AND ".join(conditions)
+
+    query = f"""
+        SELECT "測定年月日", "電柱番号", "ハンガ位置", "摩耗_最小値", "新品時直径", "行路名称", "通称線名名称", "駅_駅々間名称"
+        FROM {DATABASE}.{TABLE}
+        {where_clause}
+        ORDER BY "駅_駅々間名称" ASC, "電柱番号" ASC, "ハンガ位置" ASC, "測定年月日" ASC
+        LIMIT 50000
+    """
         
     try:
         # 1. Start query

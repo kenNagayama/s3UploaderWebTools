@@ -24,6 +24,9 @@ const backend = new BackendStack(app, 'BackendStack', {
 
 const frontend = new FrontendStack(app, 'FrontendStack', {
   // env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION },
+  dashboardApi: backend.dashboardApi,
+  uploadApiUrl: backend.uploadApiUrl,
+  customHeaderSecret: backend.customHeaderSecret,
 });
 
 // If you needed to pass the Frontend URL to Backend for CORS, you could cross-reference:
