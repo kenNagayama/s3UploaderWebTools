@@ -12,6 +12,8 @@ interface HeatmapProps {
 
 export default function Heatmap({ data, onPoleSelect, selectedPole, sortType }: HeatmapProps) {
   const chartRef = useRef<any>(null);
+  // Store zoom state to persist scroll position across re-renders
+  const [zoomState, setZoomState] = React.useState<{start: number, end: number} | null>(null);
 
   const processedData = useMemo(() => {
     if (!data || data.length === 0) return null;
@@ -132,19 +134,30 @@ export default function Heatmap({ data, onPoleSelect, selectedPole, sortType }: 
   useEffect(() => {
     const echartInstance = chartRef.current?.getEchartsInstance();
     if (echartInstance) {
-      echartInstance.on('click', (params: any) => {
+      const clickHandler = (params: any) => {
         if (params.value && params.value[1]) {
            const poleCategory = params.value[1];
            const pole = poleCategory.split(' - ')[0];
            onPoleSelect(pole);
         }
-      });
+      };
+      
+      const zoomHandler = (params: any) => {
+          // dataZoom event returns batch array or single start/end
+          const batch = params.batch?.[0] || params;
+          if (batch.start !== undefined && batch.end !== undefined) {
+              setZoomState({ start: batch.start, end: batch.end });
+          }
+      };
+
+      echartInstance.on('click', clickHandler);
+      echartInstance.on('dataZoom', zoomHandler);
+
+      return () => {
+         echartInstance.off('click', clickHandler);
+         echartInstance.off('dataZoom', zoomHandler);
+      };
     }
-    return () => {
-      if (echartInstance) {
-         echartInstance.off('click');
-      }
-    };
   }, [onPoleSelect, processedData]);
 
   if (!processedData || processedData.yCategories.length === 0) {
@@ -220,8 +233,14 @@ export default function Heatmap({ data, onPoleSelect, selectedPole, sortType }: 
         yAxisIndex: [0],
         right: 0,
         width: 20,
-        startValue: Math.max(0, yCategories.length - 42), // Show about 3 poles (42 rows) by default to prevent text squishing
-        endValue: yCategories.length - 1
+        // Use saved zoom state if available, otherwise use default range
+        ...(zoomState ? {
+            start: zoomState.start,
+            end: zoomState.end
+        } : {
+            startValue: Math.max(0, yCategories.length - 42),
+            endValue: yCategories.length - 1
+        })
       },
       { 
         type: 'inside', 
@@ -253,7 +272,10 @@ export default function Heatmap({ data, onPoleSelect, selectedPole, sortType }: 
         ref={chartRef}
         option={getOptions()} 
         style={{ height: '100%', width: '100%' }} 
-        notMerge={true}
+        // Remove notMerge={true} to allow partial updates (keeping internal state like scroll if possible)
+        // But since we are managing zoom state explicitly now, it should work either way.
+        // Keeping notMerge={true} causes full redraw which is flickery.
+        notMerge={false}
       />
     </div>
   );

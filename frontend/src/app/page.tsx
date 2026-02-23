@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import Papa from 'papaparse';
 import Heatmap from '../components/Heatmap';
 import LineChart from '../components/LineChart';
@@ -24,26 +25,47 @@ export default function Dashboard() {
   const [direction, setDirection] = useState('');
   const [station, setStation] = useState('');
 
-  // Fixed options lists based on Athena data
-  const routeOptions = [
-    "京浜東北線　北行　大船〜大宮", "京浜東北線　南行　大宮〜大船", "八高線　下り　八王子〜新宿",
-    "八高線　下り　八王子〜新木場", "埼京線　下り　品川８＃〜八王子", "大宮支線　上り　東大操〜新秋津",
-    "大宮支線　上り　東大操（大操２）〜新秋津", "大宮支線　下り　新秋津〜大宮操", "大宮支線　下り　新秋津〜東大宮操",
-    "山手貨物　上り　東大操〜品川", "山手貨物　上り　東大操（２）〜品川", "山手貨物　下り　品川〜東大操",
-    "山手貨物　下り　東京地下〜東大操", "常磐貨物線　上り　金町〜田端操〜東大宮操", "東北線　上り　黒磯〜大宮〜上野（高架１）",
-    "東北線下り 東京〜上野(高架)〜大宮〜黒磯", "東北貨物線上り　東大宮操〜田端操〜金町", "西浦和支線　上り　大宮操〜東浦和",
-    "西浦和支線　下り　東浦和〜東大操", "西浦和支線　下り　東浦和〜東大操２", "高崎線　上り　大前〜上野（地平）",
-    "高崎線　下り　上野（地平）〜横川"
-  ];
+  // Dynamic options loaded from backend
+  const [allFilters, setAllFilters] = useState<Record<string, any>>({});
+  const [routeOptions, setRouteOptions] = useState<string[]>([]);
+  const [lineOptions, setLineOptions] = useState<string[]>([]);
+  const [directionOptions, setDirectionOptions] = useState<string[]>([]);
+  const [stationOptions, setStationOptions] = useState<string[]>([]);
 
-  const lineOptions = ["川越線", "東北〔回送〕", "東北〔埼京〕", "東北〔客〕", "東北〔貨物〕", "東北〔電車〕", "東北〔高崎〕", "東北本線", "高崎線"];
-  const directionOptions = ["上り線", "下り線"];
-  const stationOptions = [
-    "与野―大宮", "久喜", "久喜―東鷲宮", "北与野―大宮", "南古谷", "南古谷―川越", "古河", "古河―野木", 
-    "大宮", "大宮―宮原", "大宮―日進", "大宮―東大宮", "大宮―東大宮〔操〕", "大宮〔操〕", "大宮〔操〕―大宮", 
-    "川越", "川越―西川越", "指扇", "指扇―南古谷", "新白岡", "新白岡―久喜", "日進", "日進―西大宮", 
-    "東大宮", "東大宮―蓮田", "東鷲宮", "東鷲宮―栗橋", "栗橋", "栗橋―古河"
-  ];
+  // Fetch all filters on mount
+  useEffect(() => {
+    const fetchFilters = async () => {
+      try {
+        const res = await fetch(`${API_URL}/dashboard/?action=get_filters`);
+        if (res.ok) {
+          const json = await res.json();
+          setAllFilters(json);
+        }
+      } catch (err) {
+        console.error("Failed to load filters", err);
+      }
+    };
+    fetchFilters();
+  }, []);
+
+  // Update options when location changes
+  useEffect(() => {
+    if (location && allFilters[location]) {
+      setRouteOptions(allFilters[location].routes || []);
+      setLineOptions(allFilters[location].lines || []);
+      setDirectionOptions(allFilters[location].directions || []);
+      setStationOptions(allFilters[location].stations || []);
+    } else {
+      setRouteOptions([]);
+      setLineOptions([]);
+      setDirectionOptions([]);
+      setStationOptions([]);
+    }
+    // Reset selected options when location changes
+    setLineName('');
+    setDirection('');
+    setStation('');
+  }, [location, allFilters]);
 
   // Removed automatic fetchData on mount. User must manually click search.
 
@@ -205,7 +227,15 @@ export default function Dashboard() {
       {loading && <TrainLoader />}
       
       <header className="bg-white px-6 py-4 shadow-sm z-10 flex flex-col gap-4">
-        <h1 className="text-xl font-bold text-slate-800">トロリ線 摩耗状態ダッシュボード (MVP)</h1>
+        <div className="flex justify-between items-center">
+            <h1 className="text-xl font-bold text-slate-800">トロリ線 摩耗状態ダッシュボード (MVP)</h1>
+            <Link href="/upload" className="flex items-center gap-2 text-sm font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-2 rounded-lg hover:bg-blue-100 transition-colors">
+                <span>データアップロード</span>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
+                </svg>
+            </Link>
+        </div>
         
         {/* Search / Filter Form */}
         <div className="flex flex-wrap gap-4 items-end bg-slate-50 p-4 rounded-md border text-sm">

@@ -281,6 +281,7 @@ export class BackendStack extends cdk.Stack {
       code: lambda.Code.fromAsset(lambdaCodePath),
       handler: 'dashboard_api_handler.handler',
       environment: {
+        ATHENA_DATA_BUCKET: athenaDataBucket.bucketName,
         ATHENA_RESULTS_BUCKET: athenaResultsBucket.bucketName,
         DATABASE_NAME: databaseName,
         TABLE_NAME: tableName,

@@ -28,6 +28,31 @@ export class FrontendStack extends cdk.Stack {
     const originAccessIdentity = new cloudfront.OriginAccessIdentity(this, 'OAI');
     this.hostingBucket.grantRead(originAccessIdentity);
 
+    // CloudFront Function for URL rewriting (Directory Index + .html extension)
+    // This allows accessing /upload instead of /upload.html
+    const rewriteFunction = new cloudfront.Function(this, 'UrlRewriteFunction', {
+      code: cloudfront.FunctionCode.fromInline(`
+        function handler(event) {
+            var request = event.request;
+            var uri = request.uri;
+            
+            // Do not rewrite if it's an API call or Next.js asset
+            if (uri.startsWith('/api') || uri.startsWith('/_next')) {
+                return request;
+            }
+
+            // Check if the URI is missing an extension
+            if (uri.endsWith('/')) {
+                request.uri += 'index.html';
+            } else if (!uri.includes('.')) {
+                request.uri += '.html';
+            }
+            
+            return request;
+        }
+      `),
+    });
+
     // Create CloudFront Distribution
     const distribution = new cloudfront.Distribution(this, 'FrontendDistribution', {
       defaultRootObject: 'index.html',
@@ -44,6 +69,12 @@ export class FrontendStack extends cdk.Stack {
         compress: true,
         allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        functionAssociations: [
+          {
+            function: rewriteFunction,
+            eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
+          },
+        ],
       },
       additionalBehaviors: {
         '/api/dashboard/*': {
@@ -77,6 +108,11 @@ export class FrontendStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'FrontendUrl', {
       value: `https://${distribution.distributionDomainName}`,
       description: 'The CloudFront URL of the hosted frontend website',
+    });
+
+    new cdk.CfnOutput(this, 'FrontendBucketName', {
+      value: this.hostingBucket.bucketName,
+      description: 'The name of the S3 bucket for the frontend website',
     });
   }
 }

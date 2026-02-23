@@ -25,9 +25,48 @@ def handler(event, context):
             'statusCode': 403,
             'body': json.dumps({'error': 'Forbidden'})
         }
+        
+    query_params = event.get('queryStringParameters') or {}
+    action = query_params.get('action')
+    
+    if action == 'get_filters':
+        data_bucket = os.environ.get('ATHENA_DATA_BUCKET')
+        filters_key = "filters.json"
+        try:
+            res = s3.get_object(Bucket=data_bucket, Key=filters_key)
+            filters_json = res['Body'].read().decode('utf-8')
+            return {
+                'statusCode': 200,
+                'headers': {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Credentials': True,
+                    'Content-Type': 'application/json'
+                },
+                'body': filters_json
+            }
+        except s3.exceptions.NoSuchKey:
+            return {
+                'statusCode': 200,
+                'headers': {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Credentials': True,
+                    'Content-Type': 'application/json'
+                },
+                'body': json.dumps({})
+            }
+        except Exception as e:
+            print(f"Error fetching filters.json: {e}")
+            return {
+                'statusCode': 500,
+                'headers': {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Credentials': True,
+                    'Content-Type': 'application/json'
+                },
+                'body': json.dumps({'error': str(e)})
+            }
     
     # Check if a specific pole number is queried
-    query_params = event.get('queryStringParameters') or {}
     pole_number = query_params.get('pole_number')
     location = query_params.get('location')
     line_type = query_params.get('line_type')
