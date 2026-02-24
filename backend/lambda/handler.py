@@ -16,6 +16,15 @@ BUCKET_NAME = os.environ.get("BUCKET_NAME")
 
 def handler(event, context):
     try:
+        # 1. Verify custom header from CloudFront
+        headers = event.get('headers') or {}
+        expected_secret = os.environ.get('X_ORIGIN_VERIFY')
+        provided_secret = headers.get('x-origin-verify') or headers.get('X-Origin-Verify')
+        
+        if expected_secret and provided_secret != expected_secret:
+            print(f"Forbidden: expected {expected_secret}, got {provided_secret}")
+            return response(403, "Forbidden")
+
         if "body" not in event or not event["body"]:
             return response(400, "Missing request body")
 
@@ -196,6 +205,11 @@ def response(status_code, body):
 
     return {
         "statusCode": status_code,
-        "headers": {"Content-Type": "application/json"},
+        "headers": {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, X-Origin-Verify, Authorization",
+        },
         "body": json.dumps(body),
     }
