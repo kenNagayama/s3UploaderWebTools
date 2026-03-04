@@ -5,6 +5,7 @@ on:
     branches:
       - main
     paths:
+      - 'infra/**'
       - 'backend/**'
 
 permissions:
@@ -16,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: backend
+        working-directory: infra
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -26,15 +27,6 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install AWS CDK
-        run: npm install -g aws-cdk
-
-      - name: Setup python with uv
-        uses: astral-sh/setup-uv@v3
-        with:
-          version: "latest"
-          enable-cache: true
-
       - name: Configure AWS Credentials with OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -42,7 +34,7 @@ jobs:
           aws-region: ap-northeast-1
 
       - name: Install dependencies
-        run: uv sync
+        run: npm install
 
       - name: Run CDK Deploy
-        run: uv run npx cdk deploy --require-approval never
+        run: npx cdk deploy --all --require-approval never
