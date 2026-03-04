@@ -31,10 +31,10 @@ export class BackendStack extends cdk.Stack {
     });
 
     const githubRole = new iam.Role(this, 'GitHubActionsDeployRole', {
-      roleName: 'GitHubActionsDeployRole-S3Uploader-TS',
+      roleName: 'GitHubActionsDeployRole-VizTrolleyDev',
       assumedBy: new iam.OpenIdConnectPrincipal(oidcProvider, {
         StringLike: {
-          [`${githubDomain}:sub`]: 'repo:kenNagayama/s3UploaderWebTools:*'
+          [`${githubDomain}:sub`]: 'repo:kenNagayama/VizTrolleyDev:*'
         },
         StringEquals: {
           [`${githubDomain}:aud`]: 'sts.amazonaws.com'
